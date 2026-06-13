@@ -1,10 +1,10 @@
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import calendar
 import re
 
 # Cấu hình hiển thị chuẩn Dashboard điều hành thông minh rộng rãi
-st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V13.1", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V13.2", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -68,6 +68,17 @@ def parse_shift_to_absolute_hours(date_str, shift_str):
     return start_t, end_t, abs_start, abs_end
 
 
+# 🔥 HÀM MỚI: Trích xuất nhanh giờ bắt đầu của ca trực để nhận diện ca rạng sáng
+def get_start_hour_helper(text):
+    match = re.search(r'(\d{1,2})[h:](\d{2})', text)
+    if match: return int(match.group(1)) + int(match.group(2)) / 60.0
+    match = re.search(r'(\d{1,2})\s*h', text)
+    if match: return float(match.group(1))
+    numbers = re.findall(r'\d+', text)
+    if numbers: return float(numbers[0])
+    return 12.0
+
+
 def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules):
     new_start = slot["abs_start"]
     new_end = slot["abs_end"]
@@ -102,7 +113,6 @@ def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules
     return True
 
 
-# 🔥 ĐÃ ĐÓNG GÓI: Hàm chạy thuật toán cắt cử tự động tích hợp sửa lỗi lịch trùng lập
 def execute_auto_assignment_algorithm(select_year, select_month):
     for name in st.session_state.members: 
         st.session_state.members[name]['workload'] = 0
@@ -122,7 +132,6 @@ def execute_auto_assignment_algorithm(select_year, select_month):
                     "start_t": start_t, "end_t": end_t, "abs_start": abs_start, "abs_end": abs_end, "assigned_people": []
                 })
                 
-    # Sắp xếp lịch chạy tuần tự từ đầu tháng đến cuối tháng để kiểm tra tính liên tục
     flat_slots.sort(key=lambda x: x["abs_start"])
     member_tracks = {name: [] for name in st.session_state.members}
     
@@ -130,13 +139,11 @@ def execute_auto_assignment_algorithm(select_year, select_month):
         pin_key = f"{slot['date_str']}_{slot['task']}_{slot['shift']}"
         busy_people = st.session_state.day_offs.get(slot["date_str"], [])
         
-        # Kiểm tra danh sách người đang đứng chung ca trực hiện tại
         current_shift_people = []
         for s_check in flat_slots:
             if s_check["date_str"] == slot["date_str"] and abs(s_check["abs_start"] - slot["abs_start"]) < 0.01:
                 current_shift_people.extend(s_check["assigned_people"])
         
-        # 🔥 THẨM ĐỊNH QUY LUẬT CHO NGƯỜI ĐƯỢC IMPORT/GHIM TRƯỚC
         assigned_via_pin = False
         if pin_key in st.session_state.pins and st.session_state.pins[pin_key]:
             requested_people = st.session_state.pins[pin_key]
@@ -144,18 +151,15 @@ def execute_auto_assignment_algorithm(select_year, select_month):
             
             for req_name in requested_people:
                 if req_name in st.session_state.members and req_name not in busy_people:
-                    # Kiểm tra xem người ghim có bị phân thân gác việc khác cùng giờ không
                     is_overlapping = False
                     for track in member_tracks[req_name]:
                         if not (slot["abs_end"] <= track["abs_start"] or slot["abs_start"] >= track["abs_end"]):
                             is_overlapping = True; break
                     if is_overlapping: continue
                     
-                    # Thẩm định qua bộ luật nâng cao (Nghỉ ca đêm, khoảng cách giờ...)
                     if validate_custom_rules(req_name, slot, member_tracks, current_shift_people, st.session_state.rules):
                         valid_people.append(req_name)
             
-            # Nếu người được import/ghim vượt qua bài kiểm tra quy luật -> Giữ nguyên lịch
             if valid_people:
                 slot["assigned_people"].extend(valid_people)
                 for vp in valid_people:
@@ -163,7 +167,6 @@ def execute_auto_assignment_algorithm(select_year, select_month):
                     member_tracks[vp].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "date_str": slot["date_str"]})
                 assigned_via_pin = True
         
-        # Nếu ca trống người HOẶC người được ghim vi phạm quy luật -> Tự động cắt người khác hợp lệ vào thay thế
         if not assigned_via_pin:
             eligible_members = []
             for name, info in st.session_state.members.items():
@@ -180,14 +183,12 @@ def execute_auto_assignment_algorithm(select_year, select_month):
                 slot["assigned_people"].append("⚠️ Trống")
                 continue
                 
-            # Chia đều theo độ công bằng
             eligible_members.sort(key=lambda x: (st.session_state.members[x]['workload'], len(st.session_state.members[x]['history'])))
             chosen = eligible_members[0]
             slot["assigned_people"].append(chosen)
             st.session_state.members[chosen]['workload'] += 1
             member_tracks[chosen].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "date_str": slot["date_str"]})
 
-    # Lưu cấu trúc xuất ra bảng lịch ô vuông
     month_schedule = {}
     for slot in flat_slots:
         if slot["date_str"] not in month_schedule: month_schedule[slot["date_str"]] = {}
@@ -259,13 +260,22 @@ def configure_day_modal(target_day):
                 parts = [p.strip() for p in re.split(r'[,;|]|\s+-\s+|\s+–\s+|\s+—\s+', quick_input) if p.strip()]
                 if len(parts) == 3:
                     p_name, p_task, p_shift = parts[0], parts[1], parts[2]
+                    
+                    # 🔥 ĐÃ SỬA: Ghim nhanh bằng văn bản cũng tự động nhận diện ca rạng sáng để chuyển ngày chuẩn
+                    start_h = get_start_hour_helper(p_shift)
+                    actual_date = datetime.strptime(target_day, "%Y-%m-%d")
+                    if start_h < 6.0:
+                        actual_date = actual_date + timedelta(days=1)
+                    target_day_fixed = actual_date.strftime("%Y-%m-%d")
+                    
                     if p_name not in st.session_state.members: st.session_state.members[p_name] = {"excluded": [], "max": 40, "workload": 0, "history": []}
                     if p_task not in st.session_state.global_tasks: st.session_state.global_tasks.append(p_task)
-                    if p_task not in st.session_state.monthly_structure[target_day]: st.session_state.monthly_structure[target_day][p_task] = []
-                    if p_shift not in st.session_state.monthly_structure[target_day][p_task]: st.session_state.monthly_structure[target_day][p_task].append(p_shift)
-                    pin_key = f"{target_day}_{p_task}_{p_shift}"
+                    if p_task not in st.session_state.monthly_structure[target_day_fixed]: st.session_state.monthly_structure[target_day_fixed][p_task] = []
+                    if p_shift not in st.session_state.monthly_structure[target_day_fixed][p_task]: st.session_state.monthly_structure[target_day_fixed][p_task].append(p_shift)
+                    pin_key = f"{target_day_fixed}_{p_task}_{p_shift}"
                     if pin_key not in st.session_state.pins: st.session_state.pins[pin_key] = []
                     if p_name not in st.session_state.pins[pin_key]: st.session_state.pins[pin_key].append(p_name)
+                    st.rerun()
 
     st.write("---")
     for task, shifts in list(st.session_state.monthly_structure[target_day].items()):
@@ -331,7 +341,7 @@ with tab_calendar:
                     st.markdown(f'<div class="day-box {box_style}"><div class="txt-date">{day_num}</div><div class="{count_style}">⚙️ {shift_count} ca trực</div></div>', unsafe_allow_html=True)
                     if st.button(f"Sửa ngày {day_num}", key=f"btn_pop_{curr_date_str}", use_container_width=True): configure_day_modal(curr_date_str)
 
-    # --- BẢNG KẾT QUẢ ĐỒ HỌA Ô VUÔNG ---
+    # --- BẢNG KẾT QUẢ DẠNG LỊCH THÁNG Ô VUÔNG ---
     st.write("---")
     if not st.session_state.history:
         st.info("💡 Hãy thiết lập lịch trình hoặc import dữ liệu, sau đó ấn nút CHẠY cắt cử để xuất bảng lịch gác vuông.")
@@ -384,25 +394,13 @@ with tab_calendar:
         st.markdown(html_table, unsafe_allow_html=True)
 
 # ------------------------------------------------------
-# TAB: 📥 IMPORT DỮ LIỆU LỊCH GÁC CÓ SẴN (ĐÃ NÂNG CẤP TỰ SỬA LỖI)
+# TAB: 📥 IMPORT DỮ LIỆU LỊCH GÁC CÓ SẴN (ĐÃ FIX LỖI TỰ DỊCH NGÀY CA ĐÊM)
 # ------------------------------------------------------
 with tab_import:
     st.subheader("📥 Trợ Lý Nhập Dữ Liệu Lịch Gác Tốc Hành")
-    st.markdown("Copy toàn bộ nội dung chữ từ file báo cáo, bảng Excel hoặc Word rồi dán thẳng vào ô bên dưới. Hệ thống sẽ tự bóc tách vọng gác, ngày tháng, ca kíp và ghim nhân sự.")
+    st.markdown("Copy toàn bộ nội dung chữ từ file báo cáo, bảng Excel hoặc Word rồi dán thẳng vào ô bên dưới.")
     
-    sample_text = (
-        "1. Vọng gác: Gác Cổng B 12 ụ (1 người/ca)\n"
-        "STT\tNgày\tCa Trực\tThời Gian Trực\tĐồng Chí Đảm Nhiệm\n"
-        "1\t15/6 (Thứ 2)\tCa 8\t02:00 - 04:00\tĐạt\n"
-        "2\t15/6 (Thứ 2)\tCa 3\t14:00 - 18:00\tNguyễn\n"
-        "3\t16/6 (Thứ 3)\tCa 9\t04:00 - 06:00\tÁnh\n"
-        "4\t16/6 (Thứ 3)\tCa 4\t18:00 - 20:00\tTrường\n\n"
-        "2. Vọng gác: Trực Quan sát mắt (QSM)\n"
-        "1\t15/6 (Thứ 2)\tCa 2\t11:00 - 14:00\tÁnh\n"
-        "2\t17/6 (Thứ 4)\tCa 1\t05:00 - 11:00\tLợi"
-    )
-    
-    import_text = st.text_area("📋 Dán dữ liệu lịch gác vào đây:", value=sample_text, height=300)
+    import_text = st.text_area("📋 Dán dữ liệu lịch gác vào đây:", height=300)
     
     if st.button("⚡ TIẾN HÀNH IMPORT & TỰ ĐỘNG CHỈNH SỬA THEO QUY LUẬT", type="primary", use_container_width=True):
         if not import_text.strip():
@@ -437,11 +435,22 @@ with tab_import:
                     raw_member = parts[3] if len(parts) >= 4 else ""
                     raw_member = re.sub(r'\(.*\)', '', raw_member).strip()
                     
+                    # 🔥 ĐÃ SỬA: Phân tích giờ bắt đầu để phát hiện ca trực rạng sáng hôm sau
+                    start_h = get_start_hour_helper(raw_time if raw_time else raw_shift)
+                    
                     date_match = re.match(r'(\d{1,2})/(\d{1,2})', raw_date)
                     if date_match:
                         d_day = int(date_match.group(1))
                         d_mon = int(date_match.group(2))
-                        formatted_date = f"2026-{d_mon:02d}-{d_day:02d}"
+                        
+                        current_date = datetime(2026, d_mon, d_day)
+                        
+                        # 🔥 QUY TẮC ĐẶC THÙ: Nếu ca trực bắt đầu từ 00:00 đến trước 06:00 sáng,
+                        # tự động cộng thêm +1 ngày để chuyển sang ô lịch rạng sáng ngày hôm sau chuẩn xác
+                        if start_h < 6.0:
+                            current_date = current_date + timedelta(days=1)
+                            
+                        formatted_date = current_date.strftime("%Y-%m-%d")
                         formatted_shift = f"{raw_shift} ({raw_time})"
                         
                         if formatted_date not in st.session_state.monthly_structure: st.session_state.monthly_structure[formatted_date] = {}
@@ -462,9 +471,8 @@ with tab_import:
                         
                         import_count += 1
             
-            # 🔥 ĐÂY LÀ ĐIỂM NÂNG CẤP GẮN KẾT: Tự động chạy thuật toán sửa đổi đồng bộ ngay khi xử lý text xong
             execute_auto_assignment_algorithm(select_year, select_month)
-            st.success(f"🎉 Đã hoàn tất import `{import_count}` ca và tự động điều phối lại toàn tháng đúng quy luật an toàn!")
+            st.success(f"🎉 Đã hoàn tất import `{import_count}` ca và tự động dịch chuyển ca rạng sáng về đúng ngày quy luật!")
             st.rerun()
 
 # ------------------------------------------------------
