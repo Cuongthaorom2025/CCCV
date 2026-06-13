@@ -64,8 +64,8 @@ with tab1:
         st.markdown("**Danh sách nhân sự hiện tại:**")
         for name, info in list(st.session_state.members.items()):
             col_m_info, col_m_del = st.columns([3, 1])
-            # Đã sửa từ .write thành .markdown để chạy được HTML an toàn
-            col_m_info.markdown(f"👤 **{name}**\n<small>Cấm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']}</small>", unsafe_allowed_html=True)
+            # Đã sửa lỗi chính tả tham số unsafe_allow_html tại đây
+            col_m_info.markdown(f"👤 **{name}**\n<small>Cấm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']}</small>", unsafe_allow_html=True)
             
             # Nút xóa thành viên
             if col_m_del.button("❌ Xóa", key=f"del_m_{name}"):
@@ -237,7 +237,8 @@ with tab3:
             with st.expander(f"📅 Lịch làm việc: {day}", expanded=True):
                 for task, person in schedule.items():
                     if "⚠️" in person:
-                        st.markdown(f"• {task} ➔ <span style='color:red'>{person}</span>", unsafe_allowed_html=True)
+                        # Đã sửa lỗi chính tả tham số tại đây
+                        st.markdown(f"• {task} ➔ <span style='color:red'>{person}</span>", unsafe_allow_html=True)
                     elif task in st.session_state.day_pre_assignments[day]:
                         st.markdown(f"• {task} ➔ **{person}** *(📌 Chỉ định trước)*")
                     else:
