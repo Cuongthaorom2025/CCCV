@@ -2,8 +2,8 @@ import streamlit as st
 from datetime import datetime
 import re
 
-# Cấu hình hiển thị chuẩn di động & máy tính
-st.set_page_config(page_title="Hệ Thống Điều Phối V8", page_icon="⚙️", layout="wide")
+# Cấu hình hiển thị chuẩn giao diện Dashboard
+st.set_page_config(page_title="Lịch Điều Phối Trực Quan V9", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -25,14 +25,13 @@ if "tasks_with_shifts" not in st.session_state:
         "Trực ban": ["Ca Sáng (08:00-12:00)", "Ca Đêm (22:00-06:00)"]
     }
 
-# 🔥 BỘ KHỞI TẠO CÁC QUY TẮC CẮT CỬ DO ADMIN TỰ THIẾT LẬP
 if "rules" not in st.session_state:
     st.session_state.rules = {
-        "block_consecutive": True,        # Bật/Tắt chống gác 2 ca liên tục
-        "max_shifts_in_window": 2,        # Số ca gác tối đa trong cửa sổ thời gian
-        "window_hours": 24.0,             # Số giờ của cửa sổ rolling-time (ví dụ: 24h)
-        "min_rest_hours": 2.0,            # Số giờ nghỉ tối thiểu giữa 2 ca trực
-        "anti_pairs": []                  # Danh sách các cặp không được làm chung ca [(A, B), ...]
+        "block_consecutive": True,        
+        "max_shifts_in_window": 2,        
+        "window_hours": 24.0,             
+        "min_rest_hours": 2.0,            
+        "anti_pairs": []                  
     }
 
 if "day_offs" not in st.session_state:
@@ -46,13 +45,11 @@ if "history" not in st.session_state:
 
 
 # ==========================================================
-# BỘ MÁY TÍNH TOÁN & THẨM ĐỊNH QUY TẮC LINH HOẠT
+# THƯ VIỆN LOGIC XỬ LÝ THỜI GIAN TUYẾN TÍNH
 # ==========================================================
 def parse_shift_bounds(shift_str, day_idx):
-    """Bóc tách text giờ (7h30-11h) thành mốc thời gian tuyến tính để tính toán"""
     parts = re.split(r'[-–—to]', shift_str)
     start_t, end_t = 0.0, 0.0
-    
     if len(parts) >= 2:
         def extract_time(text):
             match = re.search(r'(\d{1,2})[h:](\d{2})', text)
@@ -62,7 +59,6 @@ def parse_shift_bounds(shift_str, day_idx):
             numbers = re.findall(r'\d+', text)
             if numbers: return float(numbers[-1])
             return 0.0
-        
         start_t = extract_time(parts[0])
         end_t = extract_time(parts[1])
         
@@ -70,27 +66,21 @@ def parse_shift_bounds(shift_str, day_idx):
     abs_end = day_idx * 24.0 + end_t + (24.0 if end_t < start_t else 0.0)
     return start_t, end_t, abs_start, abs_end
 
-
 def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules):
-    """Hàm thẩm định xem nhân sự có vi phạm bất kỳ quy tắc động nào của Admin không"""
     new_start = slot["abs_start"]
     new_end = slot["abs_end"]
     tracks = member_tracks[name]
     
     for t in tracks:
-        # 1. KIỂM TRA QUY TẮC: Chống gác 2 ca liên tục (khoảng cách đầu cuối bằng 0)
         if rules["block_consecutive"]:
             if abs(t["abs_end"] - new_start) < 0.01 or abs(new_end - t["abs_start"]) < 0.01:
                 return False
-                
-        # 2. KIỂM TRA QUY TẮC: Khoảng cách nghỉ tối thiểu giữa các ca trực
         if rules["min_rest_hours"] > 0:
             if new_start >= t["abs_end"]:
                 if (new_start - t["abs_end"]) < rules["min_rest_hours"]: return False
             elif t["abs_start"] >= new_end:
                 if (t["abs_start"] - new_end) < rules["min_rest_hours"]: return False
 
-    # 3. KIỂM TRA QUY TẮC: Giới hạn số ca trong vòng X giờ rolling-time
     all_slots = tracks + [{"abs_start": new_start, "abs_end": new_end}]
     for s_x in all_slots:
         w_start = s_x["abs_start"]
@@ -99,24 +89,80 @@ def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules
         if count > rules["max_shifts_in_window"]:
             return False
 
-    # 4. KIỂM TRA QUY TẮC: Cặp bài trùng không được xếp chung ca trực
     for p1, p2 in rules["anti_pairs"]:
         if name == p1 and p2 in current_shift_people: return False
         if name == p2 and p1 in current_shift_people: return False
-
     return True
 
 
 # ==========================================================
-# GIAO DIỆN CHÍNH
+# STYLE CSS CHO BẢNG LỊCH TRỰC QUAN (INJECTED HTML)
 # ==========================================================
-st.title("📆 Hệ Thống Cắt Cử Công Việc Tự Động V8")
-st.markdown(" *Phiên bản Tối cao: Tự cấu hình Điều kiện quy tắc — Chống trùng lịch chéo* ")
+CALENDAR_CSS = """
+<style>
+    .calendar-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 20px 0;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .calendar-table th {
+        background-color: #2F4F4F;
+        color: white;
+        text-align: center;
+        padding: 12px;
+        font-weight: 600;
+        border: 1px solid #444;
+    }
+    .calendar-table td {
+        border: 1px solid #e0e0e0;
+        padding: 10px;
+        vertical-align: top;
+        background-color: #ffffff;
+        min-width: 120px;
+    }
+    .row-task-title {
+        background-color: #f5f5f5 !important;
+        font-weight: bold;
+        color: #333;
+    }
+    .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        margin: 3px 2px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 500;
+        text-align: center;
+    }
+    .badge-pin { background-color: #D1E8FF; color: #004085; border: 1px solid #b8daff; }
+    .badge-auto { background-color: #D4EDDA; color: #155724; border: 1px solid #c3e6cb; }
+    .badge-danger { background-color: #F8D7DA; color: #721C24; border: 1px solid #f5c6cb; font-weight: bold; }
+    .badge-fade { opacity: 0.25; background-color: #f0f0f0; color: #999; border: 1px solid #ddd; }
+    .badge-highlight { 
+        background-color: #FFDF00 !important; 
+        color: #000 !important; 
+        font-weight: bold !important;
+        box-shadow: 0 0 8px rgba(255,223,0,0.8);
+        transform: scale(1.05);
+    }
+</style>
+"""
+st.markdown(CALENDAR_CSS, unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["👥 Dữ Liệu Nhân Sự & Việc", "🛠️ Quản Lý Quy Tắc Cắt Cử", "📅 Thiết Lập Theo Ngày", "🚀 Thực Thi & Kết Quả"])
+# ==========================================================
+# GIAO DIỆN ĐIỀU HÀNH CHÍNH
+# ==========================================================
+st.title("📆 Hệ Thống Cắt Cử Điều Phối Trực Quan V9")
+st.markdown(" *Bản thiết kế tối cao: Ma trận lịch tuần trực quan, tích hợp bộ lọc tìm kiếm cá nhân* ")
+
+tab1, tab2, tab3, tab4 = st.tabs(["👥 Nhân Sự & Việc Gốc", "🛠️ Thiết Lập Luật Cắt", "📅 Cấu Hình Ngày & Ghim Tốc Hành", "🚀 Bảng Lịch Trực Quan"])
 
 # ------------------------------------------------------
-# TAB 1: CƠ SỞ DỮ LIỆU NHÂN SỰ VÀ ĐẦU VIỆC GỐC
+# TAB 1: QUẢN LÝ DỮ LIỆU NHÂN SỰ VÀ ĐẦU VIỆC GỐC
 # ------------------------------------------------------
 with tab1:
     col_left, col_right = st.columns(2)
@@ -134,13 +180,13 @@ with tab1:
         st.write("---")
         for name, info in list(st.session_state.members.items()):
             c_info, c_del = st.columns([4, 1])
-            c_info.markdown(f"👤 **{name}** \n<small>Cấm làm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Tối đa: {info['max']} việc/tuần</small>", unsafe_allow_html=True)
+            c_info.markdown(f"👤 **{name}** \n<small>Cấm làm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Tối đa: {info['max']} ca/tuần</small>", unsafe_allow_html=True)
             if c_del.button("❌", key=f"del_m_{name}"):
                 del st.session_state.members[name]
                 st.rerun()
 
     with col_right:
-        st.subheader("📌 Quản Lý Công Việc & Ca")
+        st.subheader("📌 Quản Lý Công Việc & Ca Trực")
         with st.expander("➕ Tạo công việc mới", expanded=False):
             new_t_name = st.text_input("Tên công việc mới:")
             if st.button("Tạo công việc"):
@@ -149,8 +195,8 @@ with tab1:
                     st.rerun()
         if st.session_state.tasks_with_shifts:
             with st.expander("➕ Thêm ca trực cho Công việc", expanded=False):
-                target_task = st.selectbox("Chọn công việc:", list(st.session_state.tasks_with_shifts.keys()))
-                new_s_name = st.text_input("Tên ca & Giờ cụ thể (Ví dụ: Ca 1 (7h30-11h)):")
+                target_task = st.selectbox("Chọn công việc hành mục:", list(st.session_state.tasks_with_shifts.keys()))
+                new_s_name = st.text_input("Tên ca & Khung giờ (Ví dụ: Ca 1 (7h30-11h)):")
                 if st.button("Thêm ca vào việc"):
                     if new_s_name.strip() and new_s_name.strip() not in st.session_state.tasks_with_shifts[target_task]:
                         st.session_state.tasks_with_shifts[target_task].append(new_s_name.strip())
@@ -171,81 +217,54 @@ with tab1:
                         st.rerun()
 
 # ------------------------------------------------------
-# 🔥 TAB 2: QUẢN LÝ CÁC QUY TẮC CẮT CỬ ĐỘNG (MỚI NÂNG CẤP)
+# TAB 2: QUẢN LÝ CÁC ĐIỀU KIỆN & QUY TẮC CẮT CỬ ĐỘNG
 # ------------------------------------------------------
 with tab2:
     st.subheader("🛠️ Cấu Hình Các Quy Tắc Điều Phối Hệ Thống")
-    st.info("💡 Mọi thay đổi thông số dưới đây sẽ được áp dụng trực tiếp vào thuật toán chia việc tự động.")
-    
-    # Thiết lập luật gác liên tục và nghỉ ngơi
     col_r1, col_r2 = st.columns(2)
     with col_r1:
-        st.session_state.rules["block_consecutive"] = st.checkbox(
-            "🔒 Chống gác 2 ca liên tiếp trong ngày", 
-            value=st.session_state.rules["block_consecutive"]
-        )
-        st.session_state.rules["min_rest_hours"] = st.number_input(
-            "⏱️ Khoảng thời gian nghỉ tối thiểu giữa 2 ca trực (Giờ):",
-            min_value=0.0, max_value=12.0, value=st.session_state.rules["min_rest_hours"], step=0.5
-        )
+        st.session_state.rules["block_consecutive"] = st.checkbox("🔒 Chống gác 2 ca liên tiếp sát nhau", value=st.session_state.rules["block_consecutive"])
+        st.session_state.rules["min_rest_hours"] = st.number_input("⏱️ Khoảng thời gian nghỉ tối thiểu giữa 2 ca trực (Giờ):", min_value=0.0, max_value=12.0, value=st.session_state.rules["min_rest_hours"], step=0.5)
     with col_r2:
-        st.session_state.rules["max_shifts_in_window"] = st.number_input(
-            "🛡️ Số ca trực tối đa được phép gác:",
-            min_value=1, max_value=5, value=st.session_state.rules["max_shifts_in_window"]
-        )
-        st.session_state.rules["window_hours"] = st.number_input(
-            "⏳ Trong vòng bao nhiêu giờ rolling-time (Ví dụ: 24 giờ):",
-            min_value=1.0, max_value=48.0, value=st.session_state.rules["window_hours"], step=1.0
-        )
+        st.session_state.rules["max_shifts_in_window"] = st.number_input("🛡️ Số ca trực tối đa được phép gác trong chu kỳ:", min_value=1, max_value=5, value=st.session_state.rules["max_shifts_in_window"])
+        st.session_state.rules["window_hours"] = st.number_input("⏳ Độ dài chu kỳ rolling-time (Giờ):", min_value=1.0, max_value=48.0, value=st.session_state.rules["window_hours"], step=1.0)
         
     st.write("---")
-    # Cấu hình luật Cặp bài trùng không đứng chung ca
     st.markdown("### 👥 Quy tắc Cặp nhân sự chống đứng chung ca")
-    if len(st.session_state.members) < 2:
-        st.caption("Hãy thêm tối thiểu 2 nhân sự để thiết lập quy tắc này.")
-    else:
+    if len(st.session_state.members) >= 2:
         with st.form("form_anti_pair"):
             p1 = st.selectbox("Nhân sự thứ nhất:", list(st.session_state.members.keys()), key="ap_p1")
             p2 = st.selectbox("Nhân sự thứ hai:", list(st.session_state.members.keys()), key="ap_p2")
-            submit_ap = st.form_submit_button("➕ Thêm quy tắc chặn cặp này")
-            if submit_ap:
-                if p1 == p2:
-                    st.error("Không thể chặn một người với chính họ!")
-                else:
-                    pair = (p1, p2) if p1 < p2 else (p2, p1)
-                    if pair not in st.session_state.rules["anti_pairs"]:
-                        st.session_state.rules["anti_pairs"].append(pair)
-                        st.rerun()
-
-        # Hiển thị danh sách các cặp đang bị chặn
-        if st.session_state.rules["anti_pairs"]:
-            st.markdown("**Danh sách các cặp nhân sự tuyệt đối không xếp chung ca:**")
-            for pair in list(st.session_state.rules["anti_pairs"]):
-                c_p_txt, c_p_del = st.columns([4, 1])
-                c_p_txt.write(f"🚫 Chặn đứng chung: **{pair[0]}** và **{pair[1]}**")
-                if c_p_del.button("Hủy bỏ chặn", key=f"del_ap_{pair[0]}_{pair[1]}"):
-                    st.session_state.rules["anti_pairs"].remove(pair)
+            if st.form_submit_button("➕ Thêm quy tắc chặn cặp này") and p1 != p2:
+                pair = (p1, p2) if p1 < p2 else (p2, p1)
+                if pair not in st.session_state.rules["anti_pairs"]:
+                    st.session_state.rules["anti_pairs"].append(pair)
                     st.rerun()
+        for pair in list(st.session_state.rules["anti_pairs"]):
+            c_p_txt, c_p_del = st.columns([4, 1])
+            c_p_txt.write(f"🚫 Tuyệt đối không xếp chung ca: **{pair[0]}** và **{pair[1]}**")
+            if c_p_del.button("Hủy bỏ chặn", key=f"del_ap_{pair[0]}_{pair[1]}"):
+                st.session_state.rules["anti_pairs"].remove(pair)
+                st.rerun()
 
 # ------------------------------------------------------
-# TAB 3: THIẾT LẬP ĐẶC THÙ THEO NGÀY VÀ GHIM TỐC HÀNH
+# TAB 3: THIẾT LẬP THEO NGÀY & TRỢ LÝ GHIM TỐC HÀNH
 # ------------------------------------------------------
-with tab2:
+with tab3:
+    st.subheader("📅 Thiết lập đặc thù & Ghim việc theo ngày")
     day_tabs = st.tabs(DAYS_OF_WEEK)
     for idx, day in enumerate(DAYS_OF_WEEK):
         with day_tabs[idx]:
             st.markdown(f"### 🛠️ Cài đặt cho **{day}**")
             valid_defaults = [m for m in st.session_state.day_offs[day] if m in st.session_state.members]
-            st.session_state.day_offs[day] = st.multiselect(
-                f"❌ Chọn người nghỉ (BẬN cả ngày) vào {day}:",
-                options=list(st.session_state.members.keys()),
-                default=valid_defaults, key=f"off_{day}"
-            )
+            st.session_state.day_offs[day] = st.multiselect(f"❌ Chọn người nghỉ (BẬN cả ngày) vào {day}:", options=list(st.session_state.members.keys()), default=valid_defaults, key=f"off_{day}")
+            
             st.write("---")
             st.markdown("### ⚡ Trợ lý Ghim Tốc Hành (Nhập nhanh văn bản)")
-            quick_input = st.text_input("Nhập câu lệnh ghim nhanh:", placeholder="Ví dụ: Ánh - Trực UAV - Ca 1 (7h30-11h)", key=f"text_input_{day}")
+            st.caption("Cú pháp: `Tên người - Tên việc - Tên ca` (Né được dấu gạch nối thời gian dạng 7h30-11h)")
+            quick_input = st.text_input("Nhập lệnh ghim nhanh:", placeholder="Ví dụ: Ánh - Trực UAV - Ca 1 (7h30-11h)", key=f"text_input_{day}")
             
-            if st.button("🚀 Kích hoạt ghim nhanh", key=f"btn_quick_{day}"):
+            if st.button("🚀 Kích hoạt ghim", key=f"btn_quick_{day}"):
                 if quick_input:
                     parts = [p.strip() for p in re.split(r'[,;|]|\s+-\s+|\s+–\s+|\s+—\s+', quick_input) if p.strip()]
                     if len(parts) == 3:
@@ -260,7 +279,6 @@ with tab2:
                         st.rerun()
 
             st.write("---")
-            st.markdown("#### 📌 Danh sách các vị trí cần phân bổ trong ngày:")
             for task, shifts in st.session_state.tasks_with_shifts.items():
                 if shifts:
                     st.markdown(f"📂 **Nhiệm vụ: {task}**")
@@ -269,51 +287,46 @@ with tab2:
                         is_pinned = pin_key in st.session_state.pins and st.session_state.pins[pin_key]
                         c_s_view, c_s_act = st.columns([4, 1])
                         if is_pinned:
-                            p_people = ", ".join(st.session_state.pins[pin_key])
-                            c_s_view.write(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ 📌 Ghim: **{p_people}**")
+                            c_s_view.write(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ 📌 Ghim: **{', '.join(st.session_state.pins[pin_key])}**")
                             if c_s_act.button("Hủy ghim", key=f"unpin_{pin_key}"):
                                 del st.session_state.pins[pin_key]
                                 st.rerun()
                         else:
-                            c_s_view.write(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ 🤖 *Hệ thống tự động chia*")
+                            c_s_view.write(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ 🤖 *Tự động chia*")
 
 # ------------------------------------------------------
-# TAB 4: THỰC THI THUẬT TOÁN ĐIỀU PHỐI VÀ XEM NHẬT KÝ
+# 🔥 TAB 4: THỰC THI THUẬT TOÁN & BẢNG LỊCH TRỰC QUAN (MỚI)
 # ------------------------------------------------------
 with tab4:
-    st.subheader("⚡ Chạy thuật toán điều phối tích hợp")
+    st.subheader("⚡ Bản Đồ Lịch Trực Phân Phối Toàn Diện")
     c_btn1, c_btn2 = st.columns(2)
     with c_btn1:
-        run_v8 = st.button("🚀 TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN TUẦN", type="primary", use_container_width=True)
+        run_v9 = st.button("🚀 BẮT ĐẦU TỰ ĐỘNG CẮT CỬ ĐỀU", type="primary", use_container_width=True)
     with c_btn2:
-        if st.button("🗑️ Xóa sạch lịch sử", use_container_width=True):
+        if st.button("🗑️ Xóa sạch lịch sử log", use_container_width=True):
             st.session_state.history = []
             st.rerun()
 
-    if run_v8:
+    if run_v9:
         if not st.session_state.members or not st.session_state.tasks_with_shifts:
-            st.error("Không có đủ dữ liệu gốc để vận hành tính toán!")
+            st.error("Thiếu cơ sở dữ liệu để chạy điều phối lịch!")
         else:
-            for name in st.session_state.members:
-                st.session_state.members[name]['workload'] = 0
-            
+            for name in st.session_state.members: st.session_state.members[name]['workload'] = 0
             timestamp = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
             
-            # Khởi tạo danh sách phẳng chứa toàn bộ các slot cần xếp
             flat_slots = []
             for d_idx, day in enumerate(DAYS_OF_WEEK):
                 for task, shifts in st.session_state.tasks_with_shifts.items():
                     for shift in shifts:
-                        start_t, end_t, abs_start, abs_end = parse_shift_bounds(shift, d_idx)
+                        _, _, abs_start, abs_end = parse_shift_bounds(shift, d_idx)
                         flat_slots.append({
                             "day_idx": d_idx, "day_name": day, "task": task, "shift": shift,
-                            "start": start_t, "end": end_t, "abs_start": abs_start, "abs_end": abs_end,
-                            "assigned_people": []
+                            "abs_start": abs_start, "abs_end": abs_end, "assigned_people": []
                         })
             
             member_tracks = {name: [] for name in st.session_state.members}
             
-            # BƯỚC 1: ĐIỀN CÁC LỆNH GHIM TRƯỚC
+            # ĐIỀN LỆNH GHIM TRƯỚC
             for slot in flat_slots:
                 pin_key = f"{slot['day_name']}_{slot['task']}_{slot['shift']}"
                 if pin_key in st.session_state.pins:
@@ -321,98 +334,112 @@ with tab4:
                         if member in st.session_state.members:
                             slot["assigned_people"].append(member)
                             st.session_state.members[member]['workload'] += 1
-                            st.session_state.members[member]['history'].append(f"{slot['day_name']} - {slot['task']}: {slot['shift']} (Ghim)")
-                            member_tracks[member].append({
-                                "abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "day_idx": slot["day_idx"]
-                            })
+                            member_tracks[member].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"]})
             
-            # Sắp xếp các ca theo dòng thời gian tuyến tính để chia tự động tuần tự
             flat_slots.sort(key=lambda x: (x["day_idx"], x["abs_start"]))
             
-            # BƯỚC 2: TỰ ĐỘNG CẮT CỬ DỰA TRÊN CÁC QUY TẮC ĐỘNG CỦA ADMIN
+            # TỰ ĐỘNG CHIA ĐỀU BẰNG BỘ LỌC ĐỘNG
             for slot in flat_slots:
                 if not slot["assigned_people"]:
                     busy_day_people = st.session_state.day_offs[slot["day_name"]]
                     eligible_members = []
                     
-                    # Lấy danh sách những người đã được xếp vào ca này (cho các việc khác) để check luật anti-pair
                     current_shift_people = []
                     for s_check in flat_slots:
                         if s_check["day_idx"] == slot["day_idx"] and abs(s_check["abs_start"] - slot["abs_start"]) < 0.01:
                             current_shift_people.extend(s_check["assigned_people"])
                     
                     for name, info in st.session_state.members.items():
-                        # Kiểm tra các điều kiện nền tảng
-                        if name in busy_day_people: continue
-                        if slot["task"] in info["excluded"]: continue
-                        if info["workload"] >= info["max"]: continue
+                        if name in busy_day_people or slot["task"] in info["excluded"] or info["workload"] >= info["max"]: continue
                         
-                        # Chống trùng lịch cơ bản: Không thể làm 2 việc cùng lúc trong 1 ca trực
                         is_overlapping = False
                         for track in member_tracks[name]:
                             if not (slot["abs_end"] <= track["abs_start"] or slot["abs_start"] >= track["abs_end"]):
-                                is_overlapping = True
-                                break
+                                is_overlapping = True; break
                         if is_overlapping: continue
                         
-                        # 🔥 THẨM ĐỊNH QUA BỘ QUY TẮC ĐỘNG CỦA ADMIN
-                        if not validate_custom_rules(name, slot, member_tracks, current_shift_people, st.session_state.rules):
-                            continue
-                            
+                        if not validate_custom_rules(name, slot, member_tracks, current_shift_people, st.session_state.rules): continue
                         eligible_members.append(name)
                         
                     if not eligible_members:
-                        slot["assigned_people"].append("⚠️ Không ai đủ điều kiện")
+                        slot["assigned_people"].append("⚠️ Trống")
                         continue
                     
-                    # Ưu tiên tính công bằng: Chọn người ít việc nhất tuần đợt này
                     eligible_members.sort(key=lambda x: (st.session_state.members[x]['workload'], len(st.session_state.members[x]['history'])))
                     chosen = eligible_members[0]
-                    
                     slot["assigned_people"].append(chosen)
                     st.session_state.members[chosen]['workload'] += 1
-                    st.session_state.members[chosen]['history'].append(f"{slot['day_name']} - {slot['task']}: {slot['shift']}")
-                    member_tracks[chosen].append({
-                        "abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "day_idx": slot["day_idx"]
-                    })
+                    member_tracks[chosen].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"]})
             
-            # Đóng gói kết quả để xuất ra màn hình UI
+            # Đóng gói dữ liệu lịch tuần
             week_schedule = {}
             for day in DAYS_OF_WEEK:
                 week_schedule[day] = {}
                 for task, shifts in st.session_state.tasks_with_shifts.items():
                     week_schedule[day][task] = {shift: [] for shift in shifts}
             for slot in flat_slots:
-                if slot["day_name"] in week_schedule and slot["task"] in week_schedule[slot["day_name"]]:
-                    week_schedule[slot["day_name"]][slot["task"]][slot["shift"]] = slot["assigned_people"]
-                    
+                week_schedule[slot["day_name"]][slot["task"]][slot["shift"]] = slot["assigned_people"]
+                
             st.session_state.history.append({"time": timestamp, "schedule": week_schedule})
             st.rerun()
 
-    # --- HIỂN THỊ KẾT QUẢ MỚI NHẤT ---
+    # --- ĐOẠN MÃ XUẤT ĐỒ HỌA LỊCH MA TRẬN TRỰC QUAN ---
     st.write("---")
     if not st.session_state.history:
-        st.info("💡 Hệ thống đang sẵn sàng. Hãy bấm nút 'TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN TUẦN' để nhận lịch.")
+        st.info("💡 Chưa có dữ liệu lịch làm việc. Hãy cấu hình và kích hoạt nút chạy phía trên!")
     else:
         latest = st.session_state.history[-1]
-        st.subheader(f"📋 Bảng Kết Quả Cắt Cử Toàn Tuần Mới Nhất ({latest['time']})")
         
+        # BỘ LỌC TÌM KIẾM CÁ NHÂN TRÊN ĐIỆN THOẠI CỰC TIỆN
+        st.markdown("### 🔍 Bộ lọc tìm kiếm & Khảo sát lịch")
+        selected_view_member = st.selectbox(
+            "Chọn một thành viên để xem lịch biểu riêng (Các vị trí khác sẽ tự động mờ đi):", 
+            options=["-- Xem toàn bộ hệ thống (Master Board) --"] + list(st.session_state.members.keys())
+        )
+        
+        # Tạo khung bảng HTML
+        html_table = '<table class="calendar-table"><tr><th>Nhiệm vụ & Khung ca</th>'
         for day in DAYS_OF_WEEK:
-            if day in latest['schedule']:
-                with st.expander(f"📅 LỊCH CÔNG TÁC: {day}", expanded=True):
-                    for task, shifts_dict in latest['schedule'][day].items():
-                        st.markdown(f"📂 **Nhiệm vụ: {task}**")
-                        for shift, people in shifts_dict.items():
-                            people_text = ", ".join(people)
-                            pin_key = f"{day}_{task}_{shift}"
-                            if "⚠️" in people_text:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ <span style='color:red'>{people_text}</span>", unsafe_allow_html=True)
-                            elif pin_key in st.session_state.pins and st.session_state.pins[pin_key]:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ **{people_text}** *(📌 Ghim trước)*")
-                            else:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ **{people_text}**")
-                        st.write("")
+            html_table += f'<th>{day}</th>'
+        html_table += '</tr>'
+        
+        # Điền dữ liệu ma trận Ngày - Giờ - Việc
+        for task, shifts in st.session_state.tasks_with_shifts.items():
+            if shifts:
+                # Tiêu đề dòng Công việc lớn
+                html_table += f'<tr><td class="row-task-title" colspan="8">📂 {task}</td></tr>'
+                for shift in shifts:
+                    html_table += f'<tr><td style="font-weight:500; background-color:#fafafa;">⏱️ {shift}</td>'
                     
-        with st.expander("📊 Thống kê khối lượng công việc tuần này (Tính công bằng)"):
+                    for day in DAYS_OF_WEEK:
+                        html_table += '<td>'
+                        people_list = latest['schedule'].get(day, {}).get(task, {}).get(shift, [])
+                        
+                        if not people_list or "⚠️ Trống" in people_list:
+                            html_table += '<span class="badge badge-danger">⚠️ Trống</span>'
+                        else:
+                            for person in people_list:
+                                pin_key = f"{day}_{task}_{shift}"
+                                is_pinned_cell = pin_key in st.session_state.pins and person in st.session_state.pins[pin_key]
+                                class_badge = "badge-pin" if is_pinned_cell else "badge-auto"
+                                
+                                # Áp dụng hiệu ứng làm nổi bật khi lọc tên cá nhân
+                                if selected_view_member != "-- Xem toàn bộ hệ thống (Master Board) --":
+                                    if person == selected_view_member:
+                                        class_badge += " badge-highlight"
+                                    else:
+                                        class_badge += " badge-fade"
+                                        
+                                html_table += f'<span class="badge {class_badge}">{person}</span>'
+                        html_table += '</td>'
+                    html_table += '</tr>'
+                    
+        html_table += '</table>'
+        
+        # Đẩy trực tiếp bảng đồ họa vào giao diện Streamlit Cloud
+        st.markdown(html_table, unsafe_allow_html=True)
+        
+        # Thống kê tải cuối tuần công bằng
+        with st.expander("📊 Thống kê khối lượng phân bổ đợt này"):
             for name, info in st.session_state.members.items():
-                st.write(f"- 👤 **{name}** đã được phân bổ: `{info['workload']}` ca trực/nhiệm vụ trong tuần.")
+                st.write(f"- 👤 **{name}** gác tổng cộng: `{info['workload']}` ca trực trong tuần này.")
