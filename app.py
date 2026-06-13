@@ -3,14 +3,14 @@ from datetime import datetime
 import calendar
 import re
 
-# Cấu hình hiển thị chuẩn Dashboard điều hành thông minh
-st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12.4", page_icon="📅", layout="wide")
+# Cấu hình hiển thị chuẩn Dashboard điều hành thông minh rộng rãi
+st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V13", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
 
 # ==========================================================
-# KHỞI TẠO BỘ NHỚ HỆ THỐNG TRÊN ĐỒNG HỒ THỜI GIAN (2026)
+# KHỔI TẠO BỘ NHỚ HỆ THỐNG TRÊN ĐỒNG HỒ THỜI GIAN (2026)
 # ==========================================================
 if "members" not in st.session_state:
     st.session_state.members = {
@@ -21,31 +21,24 @@ if "members" not in st.session_state:
     }
 
 if "global_tasks" not in st.session_state:
-    st.session_state.global_tasks = ["Trực UAV", "Trực ban", "Tuần tra cơ động", "Kiểm tra kho"]
+    st.session_state.global_tasks = ["Gác Cổng B 12 ụ", "Trực Quan sát mắt (QSM)", "Tuần tra đêm"]
 
 if "monthly_structure" not in st.session_state:
     st.session_state.monthly_structure = {}
 
-# Cập nhật cấu hình quy tắc mặc định có thêm luật nghỉ ca đêm
 if "rules" not in st.session_state:
     st.session_state.rules = {
         "block_consecutive": True,        
         "max_shifts_in_window": 2,        
         "window_hours": 24.0,             
         "min_rest_hours": 2.0,
-        "night_shift_morning_off": True,  # Bật/Tắt luật trực đêm nghỉ sáng hôm sau
+        "night_shift_morning_off": True,  
         "anti_pairs": []                  
     }
 
-if "day_offs" not in st.session_state:
-    st.session_state.day_offs = {}  
-
-if "pins" not in st.session_state:
-    st.session_state.pins = {}      
-
-if "history" not in st.session_state:
-    st.session_state.history = []
-
+if "day_offs" not in st.session_state: st.session_state.day_offs = {}  
+if "pins" not in st.session_state: st.session_state.pins = {}      
+if "history" not in st.session_state: st.session_state.history = []
 
 # ==========================================================
 # BỘ MÁY XỬ LÝ THỜI GIAN TUYẾN TÍNH (ABSOLUTE TIMELINE)
@@ -79,51 +72,36 @@ def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules
     new_start = slot["abs_start"]
     new_end = slot["abs_end"]
     tracks = member_tracks[name]
-    
     slot_date = datetime.strptime(slot["date_str"], "%Y-%m-%d")
     epoch = datetime(2026, 1, 1)
     
     for t in tracks:
-        # 1. QUY TẮC: Chống gác 2 ca liên tục liền kề
         if rules["block_consecutive"]:
-            if abs(t["abs_end"] - new_start) < 0.01 or abs(new_end - t["abs_start"]) < 0.01:
-                return False
-                
-        # 2. QUY TẮC: Khoảng thời gian nghỉ tối thiểu giữa các ca
+            if abs(t["abs_end"] - new_start) < 0.01 or abs(new_end - t["abs_start"]) < 0.01: return False
         if rules["min_rest_hours"] > 0:
             if new_start >= t["abs_end"]:
                 if (new_start - t["abs_end"]) < rules["min_rest_hours"]: return False
             elif t["abs_start"] >= new_end:
                 if (t["abs_start"] - new_end) < rules["min_rest_hours"]: return False
-                
-        # 3. QUY TẮC MỚI: Trực đêm/xuyên đêm hôm trước được nghỉ buổi sáng hôm sau (trước 12h00)
         if rules.get("night_shift_morning_off", True):
             slot_day_start_hours = (slot_date - epoch).days * 24.0
             end_hour_on_slot_day = t["abs_end"] - slot_day_start_hours
-            
-            # Nếu ca cũ kết thúc vào khoảng từ 0h00 đến 8h00 sáng ngày hôm nay (gác xuyên đêm)
             if 0.0 < end_hour_on_slot_day <= 8.0:
-                # Thì mọi ca trực tự động vào ngày hôm nay bắt đầu trước 12h00 trưa đều bị chặn
-                if slot["start_t"] < 12.0:
-                    return False
+                if slot["start_t"] < 12.0: return False
 
-    # 4. QUY TẮC: Giới hạn số ca trong vòng X giờ rolling-time
     all_slots = tracks + [{"abs_start": new_start, "abs_end": new_end}]
     for s_x in all_slots:
         w_start = s_x["abs_start"]
         w_end = w_start + rules["window_hours"]
         count = sum(1 for s_y in all_slots if w_start <= s_y["abs_start"] < w_end)
-        if count > rules["max_shifts_in_window"]:
-            return False
+        if count > rules["max_shifts_in_window"]: return False
 
-    # 5. QUY TẮC: Chặn cặp bài trùng chung ca
     for p1, p2 in rules["anti_pairs"]:
         if name == p1 and p2 in current_shift_people: return False
         if name == p2 and p1 in current_shift_people: return False
     return True
 
-
-# Style CSS đồ màu bảng và các block ca kíp gác
+# Giao diện CSS
 st.markdown("""
 <style>
     .day-box { border-radius: 8px; padding: 10px; margin-bottom: 5px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); min-height: 85px; }
@@ -147,7 +125,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ==========================================================
 # BẢNG POPUP DIALOG TƯƠNG TÁC
 # ==========================================================
@@ -162,12 +139,10 @@ def configure_day_modal(target_day):
         st.markdown("**➕ Thêm việc & Ca trực:**")
         with st.form(key=f"pop_form_add_{target_day}"):
             if not st.session_state.global_tasks:
-                st.warning("Hãy thêm công việc gốc ở Tab 'Quản lý Nhân Sự & Việc' trước!")
+                st.warning("Hãy thêm công việc gốc trước!")
                 chosen_task = None
-            else:
-                chosen_task = st.selectbox("Chọn công việc gác:", options=st.session_state.global_tasks)
-            s_input = st.text_input("Ca & Khung giờ (Ví dụ: ca1 7h30-11h hoặc ca từ 20h-6h):")
-            
+            else: chosen_task = st.selectbox("Chọn công việc gác:", options=st.session_state.global_tasks)
+            s_input = st.text_input("Ca & Khung giờ (Ví dụ: Ca 1 (05:00 - 11:00)):")
             if st.form_submit_button("➕ Thêm vào ngày này") and chosen_task and s_input.strip():
                 s_clean = s_input.strip()
                 if chosen_task not in st.session_state.monthly_structure[target_day]: st.session_state.monthly_structure[target_day][chosen_task] = []
@@ -185,13 +160,12 @@ def configure_day_modal(target_day):
                 if len(parts) == 3:
                     p_name, p_task, p_shift = parts[0], parts[1], parts[2]
                     if p_name not in st.session_state.members: st.session_state.members[p_name] = {"excluded": [], "max": 40, "workload": 0, "history": []}
-                    if p_task not in st.session_state.global_tasks: st.error(f"Đầu việc '{p_task}' không tồn tại gốc!")
-                    else:
-                        if p_task not in st.session_state.monthly_structure[target_day]: st.session_state.monthly_structure[target_day][p_task] = []
-                        if p_shift not in st.session_state.monthly_structure[target_day][p_task]: st.session_state.monthly_structure[target_day][p_task].append(p_shift)
-                        pin_key = f"{target_day}_{p_task}_{p_shift}"
-                        if pin_key not in st.session_state.pins: st.session_state.pins[pin_key] = []
-                        if p_name not in st.session_state.pins[pin_key]: st.session_state.pins[pin_key].append(p_name)
+                    if p_task not in st.session_state.global_tasks: st.session_state.global_tasks.append(p_task)
+                    if p_task not in st.session_state.monthly_structure[target_day]: st.session_state.monthly_structure[target_day][p_task] = []
+                    if p_shift not in st.session_state.monthly_structure[target_day][p_task]: st.session_state.monthly_structure[target_day][p_task].append(p_shift)
+                    pin_key = f"{target_day}_{p_task}_{p_shift}"
+                    if pin_key not in st.session_state.pins: st.session_state.pins[pin_key] = []
+                    if p_name not in st.session_state.pins[pin_key]: st.session_state.pins[pin_key].append(p_name)
 
     st.write("---")
     for task, shifts in list(st.session_state.monthly_structure[target_day].items()):
@@ -217,19 +191,19 @@ def configure_day_modal(target_day):
 # ==========================================================
 # CƠ CẤU HỆ THỐNG TABS GIAO DIỆN CHÍNH
 # ==========================================================
-tab_calendar, tab_members, tab_rules = st.tabs(["🗓️ Bản Đồ Lịch Tháng & Điều Phối", "👥 Quản Lý Nhân Sự & Việc Gốc", "🛡️ Quản Lý Điều Kiện Cắt Cử"])
+tab_calendar, tab_import, tab_members, tab_rules = st.tabs(["🗓️ Bản Đồ Lịch Tháng & Điều Phối", "📥 Import Lịch Có Sẵn", "👥 Nhân Sự & Việc Gốc", "🛡️ Luật Điều Phối"])
 
 # ------------------------------------------------------
-# TAB CENTRAL: BẢN ĐỒ LỊCH THÁNG & BẢNG KẾT QUẢ VUÔNG ĐỘC ĐÁO
+# TAB CENTRAL: BẢN ĐỒ LỊCH THÁNG & BẢNG KẾT QUẢ VUÔNG
 # ------------------------------------------------------
 with tab_calendar:
     col_ctrl1, col_ctrl2 = st.columns([3, 7])
     with col_ctrl1:
-        select_month = st.selectbox("📅 Chọn Tháng gác:", list(range(1, 13)), index=5) 
+        select_month = st.selectbox("📅 Chọn Tháng gác:", list(range(1, 13)), index=5) # Mặc định Tháng 6
         select_year = st.number_input("📆 Chọn Năm trực:", min_value=2026, max_value=2030, value=2026)
     with col_ctrl2:
         st.write("<br>", unsafe_allow_html=True)
-        if st.button("🚀 KÍCH HOẠ TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN THÁNG", type="primary", use_container_width=True):
+        if st.button("🚀 KÍCH HOẠT TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN THÁNG", type="primary", use_container_width=True):
             for name in st.session_state.members: st.session_state.members[name]['workload'] = 0
             timestamp = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
             
@@ -244,13 +218,12 @@ with tab_calendar:
                         start_t, end_t, abs_start, abs_end = parse_shift_to_absolute_hours(d_str, shift)
                         flat_slots.append({
                             "date_str": d_str, "day_num": day_num, "task": task, "shift": shift,
-                            "start_t": start_t, "end_t": end_t,
-                            "abs_start": abs_start, "abs_end": abs_end, "assigned_people": []
+                            "start_t": start_t, "end_t": end_t, "abs_start": abs_start, "abs_end": abs_end, "assigned_people": []
                         })
                         
             member_tracks = {name: [] for name in st.session_state.members}
             
-            # ĐIỀN GHIM TRƯỚC
+            # ĐIỀN GHIM TRƯỚC (Giữ nguyên lịch cũ đã ghim hoặc import)
             for slot in flat_slots:
                 pin_key = f"{slot['date_str']}_{slot['task']}_{slot['shift']}"
                 if pin_key in st.session_state.pins:
@@ -258,13 +231,11 @@ with tab_calendar:
                         if member in st.session_state.members:
                             slot["assigned_people"].append(member)
                             st.session_state.members[member]['workload'] += 1
-                            member_tracks[member].append({
-                                "abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "date_str": slot["date_str"]
-                            })
+                            member_tracks[member].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "date_str": slot["date_str"]})
                             
             flat_slots.sort(key=lambda x: x["abs_start"])
             
-            # TỰ ĐỘNG PHÂN PHỐI THÀNH VIÊN
+            # TỰ ĐỘNG ĐIỀN NỐT CHỖ TRỐNG CÒN THIẾU
             for slot in flat_slots:
                 if not slot["assigned_people"]:
                     busy_people = st.session_state.day_offs.get(slot["date_str"], [])
@@ -281,7 +252,6 @@ with tab_calendar:
                             if not (slot["abs_end"] <= track["abs_start"] or slot["abs_start"] >= track["abs_end"]):
                                 is_overlapping = True; break
                         if is_overlapping: continue
-                        
                         if not validate_custom_rules(name, slot, member_tracks, current_shift_people, st.session_state.rules): continue
                         eligible_members.append(name)
                         
@@ -293,9 +263,7 @@ with tab_calendar:
                     chosen = eligible_members[0]
                     slot["assigned_people"].append(chosen)
                     st.session_state.members[chosen]['workload'] += 1
-                    member_tracks[chosen].append({
-                        "abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "date_str": slot["date_str"]
-                    })
+                    member_tracks[chosen].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"], "date_str": slot["date_str"]})
 
             month_schedule = {}
             for slot in flat_slots:
@@ -305,54 +273,43 @@ with tab_calendar:
                 
             deep_copied_structure = {d: {t: list(s) for t, s in tasks.items()} for d, tasks in st.session_state.monthly_structure.items()}
             st.session_state.history.append({
-                "time": timestamp, "schedule": month_schedule, "structure": deep_copied_structure,
-                "month": select_month, "year": select_year
+                "time": timestamp, "schedule": month_schedule, "structure": deep_copied_structure, "month": select_month, "year": select_year
             })
             st.rerun()
 
     st.write("---")
     st.markdown(f"#### 🗓️ Cuốn Lịch Thiết Lập Tháng {select_month} / {select_year}")
-    st.caption("👉 **HƯỚNG DẪN:** Bấm nút **'Sửa ngày'** bất kỳ để mở Popup ghim lịch.")
+    st.caption("👉 **HƯỚNG DẪN:** Bấm nút **'Sửa ngày'** bất kỳ để mở Popup chỉnh sửa ca trực.")
 
     cols_header = st.columns(7)
-    for i, text in enumerate(DAYS_OF_WEEK):
-        cols_header[i].markdown(f'<div class="calendar-header">{text}</div>', unsafe_allow_html=True)
+    for i, text in enumerate(DAYS_OF_WEEK): cols_header[i].markdown(f'<div class="calendar-header">{text}</div>', unsafe_allow_html=True)
 
     month_matrix = calendar.monthcalendar(select_year, select_month)
     for week in month_matrix:
         cols_week = st.columns(7)
         for d_idx, day_num in enumerate(week):
             with cols_week[d_idx]:
-                if day_num == 0:
-                    st.markdown('<div class="day-box day-empty"></div>', unsafe_allow_html=True)
+                if day_num == 0: st.markdown('<div class="day-box day-empty"></div>', unsafe_allow_html=True)
                 else:
                     curr_date_str = f"{select_year}-{select_month:02d}-{day_num:02d}"
                     day_struct = st.session_state.monthly_structure.get(curr_date_str, {})
                     shift_count = sum(len(shifts) for shifts in day_struct.values())
-                    
                     box_style = "day-configured" if shift_count > 0 else "day-normal"
                     count_style = "txt-count" if shift_count > 0 else "txt-count-zero"
                     
-                    st.markdown(f"""
-                    <div class="day-box {box_style}">
-                        <div class="txt-date">{day_num}</div>
-                        <div class="{count_style}">⚙️ {shift_count} ca trực</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"Sửa ngày {day_num}", key=f"btn_pop_{curr_date_str}", use_container_width=True):
-                        configure_day_modal(curr_date_str)
+                    st.markdown(f'<div class="day-box {box_style}"><div class="txt-date">{day_num}</div><div class="{count_style}">⚙️ {shift_count} ca trực</div></div>', unsafe_allow_html=True)
+                    if st.button(f"Sửa ngày {day_num}", key=f"btn_pop_{curr_date_str}", use_container_width=True): configure_day_modal(curr_date_str)
 
-    # --- BẢNG KẾT QUẢ DẠNG LỊCH THÁNG Ô VUÔNG ---
+    # --- BẢNG KẾT QUẢ ĐỒ HỌA Ô VUÔNG ---
     st.write("---")
     if not st.session_state.history:
-        st.info("💡 Hãy thiết lập lịch trình và ấn nút kích hoạt CHẠY hệ thống ở trên để xuất ma trận lịch gác vuông.")
+        st.info("💡 Hãy thiết lập lịch trình hoặc import dữ liệu, sau đó ấn nút CHẠY cắt cử để xuất bảng lịch gác vuông.")
     else:
         latest = st.session_state.history[-1]
         view_month = latest.get("month", select_month)
         view_year = latest.get("year", select_year)
         
-        st.subheader(f"📋 Bảng Kết Quả Điều Phối Lịch Tháng Vuông {view_month}/{view_year} ({latest['time']})")
+        st.subheader(f"📋 Bảng Kết Quả Điều Phối Lịch Tháng Vuông {view_month}/{view_year}")
         selected_view_member = st.selectbox("🔍 Khảo sát lịch cá nhân nhanh (Làm nổi bật tên):", options=["-- Xem toàn bộ hệ thống (Master Board) --"] + list(st.session_state.members.keys()))
         
         historical_structure = latest.get("structure", st.session_state.monthly_structure)
@@ -365,16 +322,14 @@ with tab_calendar:
         for week in result_month_matrix:
             html_table += '<tr>'
             for d_idx, day_num in enumerate(week):
-                if day_num == 0:
-                    html_table += '<td style="background-color: #F9FAFB;"></td>'
+                if day_num == 0: html_table += '<td style="background-color: #F9FAFB;"></td>'
                 else:
                     d_str = f"{view_year}-{view_month:02d}-{day_num:02d}"
                     html_table += '<td>'
                     html_table += f'<div class="result-day-num">{day_num}</div>'
                     
                     busy_people = st.session_state.day_offs.get(d_str, [])
-                    if busy_people:
-                        html_table += f'<div style="font-size:10px; color:#EF4444; margin-bottom:4px; font-weight:500;">❌ Nghỉ: {", ".join(busy_people)}</div>'
+                    if busy_people: html_table += f'<div style="font-size:10px; color:#EF4444; margin-bottom:4px; font-weight:500;">❌ Nghỉ: {", ".join(busy_people)}</div>'
                         
                     day_tasks = historical_structure.get(d_str, {})
                     for task, shifts in day_tasks.items():
@@ -388,20 +343,121 @@ with tab_calendar:
                                 for person in people_list:
                                     is_pinned_cell = pin_key in st.session_state.pins and person in st.session_state.pins[pin_key]
                                     strip_class = "strip-pin" if is_pinned_cell else "strip-auto"
-                                    
                                     if selected_view_member != "-- Xem toàn bộ hệ thống (Master Board) --":
                                         if person == selected_view_member: strip_class = "strip-highlight"
                                         else: strip_class = "strip-fade"
-                                            
                                     html_table += f'<div class="result-shift-strip {strip_class}"><b>{person}</b>: {task} ({shift})</div>'
                     html_table += '</td>'
             html_table += '</tr>'
-            
         html_table += '</table>'
         st.markdown(html_table, unsafe_allow_html=True)
 
 # ------------------------------------------------------
-# TAB 2: QUẢN LÝ NHÂN SỰ & DANH MỤC CÔNG VIỆC GỐC
+# 🔥 TAB MỚI NÂNG CẤP: 📥 IMPORT DỮ LIỆU LỊCH GÁC CÓ SẴN
+# ------------------------------------------------------
+with tab_import:
+    st.subheader("📥 Trợ Lý Nhập Dữ Liệu Lịch Gác Tốc Hành")
+    st.markdown("Copy toàn bộ nội dung chữ từ file báo cáo, bảng Excel hoặc Word rồi dán thẳng vào ô bên dưới. Hệ thống sẽ tự bóc tách vọng gác, ngày tháng, ca kíp và ghim nhân sự.")
+    
+    # Cung cấp sẵn mẫu tương ứng chính xác với định dạng ảnh của người dùng gửi để test nhanh
+    sample_text = (
+        "1. Vọng gác: Gác Cổng B 12 ụ (1 người/ca)\n"
+        "STT\tNgày\tCa Trực\tThời Gian Trực\tĐồng Chí Đảm Nhiệm\n"
+        "1\t15/6 (Thứ 2)\tCa 8\t02:00 - 04:00\tĐạt\n"
+        "2\t15/6 (Thứ 2)\tCa 3\t14:00 - 18:00\tNguyễn\n"
+        "3\t16/6 (Thứ 3)\tCa 9\t04:00 - 06:00\tÁnh\n"
+        "4\t16/6 (Thứ 3)\tCa 4\t18:00 - 20:00\tTrường\n\n"
+        "2. Vọng gác: Trực Quan sát mắt (QSM)\n"
+        "1\t15/6 (Thứ 2)\tCa 2\t11:00 - 14:00\tÁnh\n"
+        "2\t17/6 (Thứ 4)\tCa 1\t05:00 - 11:00\tLợi"
+    )
+    
+    import_text = st.text_area("📋 Dán dữ liệu lịch gác vào đây:", value=sample_text, height=300)
+    
+    if st.button("⚡ TIẾN HÀNH IMPORT & ĐỒNG BỘ LÊN LỊCH", type="primary", use_container_width=True):
+        if not import_text.strip():
+            st.error("Nội dung trống, vui lòng dán dữ liệu vào trước!")
+        else:
+            lines = import_text.split('\n')
+            current_task = "Trực ban"
+            import_count = 0
+            
+            for line in lines:
+                line = line.strip()
+                if not line: continue
+                
+                # 1. Phát hiện tiêu đề Vọng gác / Vọng trực
+                if "Vọng gác:" in line or "Vọng trực:" in line or re.match(r'^\d+\.', line):
+                    task_match = re.search(r'(?:Vọng gác:|Vọng trực:)\s*([^\(]+)', line)
+                    if task_match:
+                        current_task = task_match.group(1).strip()
+                    else:
+                        # Fallback nếu viết kiểu "1. Gác Cổng B 12 ụ"
+                        current_task = re.sub(r'^\d+\.\s*', '', line).split('(')[0].strip()
+                    
+                    if current_task not in st.session_state.global_tasks:
+                        st.session_state.global_tasks.append(current_task)
+                    continue
+                
+                # Bỏ qua dòng tiêu đề cột
+                if "Ngày" in line or "Ca Trực" in line or "Đồng Chí" in line: continue
+                
+                # 2. Phân tách dòng bằng tab (excel) hoặc khoảng trắng chéo
+                parts = [p.strip() for p in re.split(r'[\t,|]|\s{2,}', line) if p.strip()]
+                
+                # Nếu dòng có STT ở đầu, loại bỏ nó để xử lý
+                if parts and parts[0].isdigit():
+                    parts = parts[1:]
+                    
+                if len(parts) >= 3: # Đảm bảo có tối thiểu: Ngày, Tên Ca, Giờ trực
+                    raw_date = parts[0].split('(')[0].strip() # Lấy "15/6" từ "15/6 (Thứ 2)"
+                    raw_shift = parts[1]                      # Lấy "Ca 8"
+                    raw_time = parts[2].replace(" ", "")      # Lấy "02:00-04:00"
+                    
+                    # Xác định cột tên người đảm nhiệm nếu có
+                    raw_member = parts[3] if len(parts) >= 4 else ""
+                    # Làm sạch chữ như (Đã trực)
+                    raw_member = re.sub(r'\(.*\)', '', raw_member).strip()
+                    
+                    # Khớp định dạng ngày ra "2026-MM-DD"
+                    date_match = re.match(r'(\d{1,2})/(\d{1,2})', raw_date)
+                    if date_match:
+                        d_day = int(date_match.group(1))
+                        d_mon = int(date_match.group(2))
+                        formatted_date = f"2026-{d_mon:02d}-{d_day:02d}"
+                        
+                        # Gộp ca trực + khung giờ thành chuỗi chuẩn
+                        formatted_shift = f"{raw_shift} ({raw_time})"
+                        
+                        # Đổ cấu trúc vào ngày
+                        if formatted_date not in st.session_state.monthly_structure:
+                            st.session_state.monthly_structure[formatted_date] = {}
+                        if current_task not in st.session_state.monthly_structure[formatted_date]:
+                            st.session_state.monthly_structure[formatted_date][current_task] = []
+                        if formatted_shift not in st.session_state.monthly_structure[formatted_date][current_task]:
+                            st.session_state.monthly_structure[formatted_date][current_task].append(formatted_shift)
+                        
+                        # Nếu dòng có tên người, tiến hành GHIM ĐÍCH DANH luôn
+                        if raw_member and raw_member != "Trống" and raw_member != "—":
+                            # Tách nếu có nhiều người làm chung một ca (ví dụ: "Minh, Đạt")
+                            names = [n.strip() for p in re.split(r'[,;-]', raw_member) for n in p.split() if n.strip()]
+                            names = list(set(names)) # loại trùng
+                            
+                            pin_key = f"{formatted_date}_{current_task}_{formatted_shift}"
+                            st.session_state.pins[pin_key] = []
+                            for name in names:
+                                if name not in st.session_state.members:
+                                    st.session_state.members[name] = {"excluded": [], "max": 40, "workload": 0, "history": []}
+                                if name not in st.session_state.pins[pin_key]:
+                                    st.session_state.pins[pin_key].append(name)
+                        
+                        import_count += 1
+            
+            st.success(f"🎉 Import dữ liệu thành công! Đã đồng bộ hóa `{import_count}` ca trực lên bản đồ ô lịch tháng.")
+            st.rerun()
+
+# ------------------------------------------------------
+# TAB 3: QUẢN LÝ NHÂN SỰ & VIỆC GỐC
 # ------------------------------------------------------
 with tab_members:
     c_m1, c_m2 = st.columns(2)
@@ -409,7 +465,7 @@ with tab_members:
         st.subheader("👥 Quản Lý Hồ Sơ Nhân Sự")
         with st.expander("➕ Thêm nhân sự mới", expanded=False):
             m_name = st.text_input("Tên nhân sự:")
-            m_exclude = st.text_input("Việc không thể gác (Cách nhau bằng dấu phẩy):")
+            m_exclude = st.text_input("Việc không thể gác (Cách nhau dấu phẩy):")
             m_max = st.number_input("Số ca trực tối đa/tháng:", min_value=1, value=40)
             if st.button("Lưu hồ sơ nhân sự"):
                 if m_name.strip():
@@ -420,9 +476,7 @@ with tab_members:
         for name, info in list(st.session_state.members.items()):
             c_info, c_del = st.columns([5, 1])
             c_info.markdown(f"👤 **{name}** \n<small>Cấm gác: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']} ca</small>", unsafe_allow_html=True)
-            if c_del.button("Xóa", key=f"tab_del_m_{name}"):
-                del st.session_state.members[name]
-                st.rerun()
+            if c_del.button("Xóa", key=f"tab_del_m_{name}"): del st.session_state.members[name]; st.rerun()
                 
     with c_m2:
         st.subheader("📂 Danh Mục Công Việc Gốc")
@@ -433,16 +487,13 @@ with tab_members:
                     st.session_state.global_tasks.append(t_g_input.strip())
                     st.rerun()
         st.write("---")
-        st.markdown("**Danh sách công việc đang khả dụng trên hệ thống:**")
         for idx, task_g in enumerate(st.session_state.global_tasks):
             c_t_name, c_t_del = st.columns([5, 1])
             c_t_name.write(f"🔹 **{task_g}**")
-            if c_t_del.button("Xóa việc", key=f"tab_del_tg_{idx}_{task_g}"):
-                st.session_state.global_tasks.remove(task_g)
-                st.rerun()
+            if c_t_del.button("Xóa việc", key=f"tab_del_tg_{idx}_{task_g}"): st.session_state.global_tasks.remove(task_g); st.rerun()
 
 # ------------------------------------------------------
-# TAB 3: LUẬT ĐIỀU PHỐI NÂNG CAO
+# TAB 4: LUẬT ĐIỀU PHỐI NÂNG CAO
 # ------------------------------------------------------
 with tab_rules:
     st.subheader("🛠️ Bộ Cấu Hình Điều Kiện Cắt Cử")
@@ -450,13 +501,7 @@ with tab_rules:
     with col_r1:
         st.session_state.rules["block_consecutive"] = st.checkbox("🔒 Nghiêm cấm gác 2 ca liên tục liền kề nhau", value=st.session_state.rules["block_consecutive"])
         st.session_state.rules["min_rest_hours"] = st.number_input("⏱️ Thời gian nghỉ tối thiểu bắt buộc giữa các ca trực (Giờ):", min_value=0.0, max_value=12.0, value=st.session_state.rules["min_rest_hours"], step=0.5)
-        
-        # Công tắc Bật/Tắt quy tắc trực đêm được nghỉ sáng hôm sau
-        st.session_state.rules["night_shift_morning_off"] = st.checkbox(
-            "🌙 Trực ca đêm/xuyên đêm được nghỉ buổi sáng hôm sau (Không xếp ca gác trước 12h00 trưa)", 
-            value=st.session_state.rules.get("night_shift_morning_off", True)
-        )
-        
+        st.session_state.rules["night_shift_morning_off"] = st.checkbox("🌙 Trực ca đêm/xuyên đêm được nghỉ buổi sáng hôm sau (Không xếp ca gác trước 12h00 trưa)", value=st.session_state.rules.get("night_shift_morning_off", True))
     with col_r2:
         st.session_state.rules["max_shifts_in_window"] = st.number_input("🛡️ Số lượng ca trực tối đa gác trong chu kỳ:", min_value=1, max_value=5, value=st.session_state.rules["max_shifts_in_window"])
         st.session_state.rules["window_hours"] = st.number_input("⏳ Độ dài chu kỳ rolling-time (Giờ):", min_value=1.0, max_value=48.0, value=st.session_state.rules["window_hours"], step=1.0)
@@ -469,12 +514,8 @@ with tab_rules:
             p2 = st.selectbox("Nhân sự B:", list(st.session_state.members.keys()), key="tab_ap_p2")
             if st.form_submit_button("Xác nhận chặn cặp này") and p1 != p2:
                 pair = (p1, p2) if p1 < p2 else (p2, p1)
-                if pair not in st.session_state.rules["anti_pairs"]:
-                    st.session_state.rules["anti_pairs"].append(pair)
-                    st.rerun()
+                if pair not in st.session_state.rules["anti_pairs"]: st.session_state.rules["anti_pairs"].append(pair); st.rerun()
         for pair in list(st.session_state.rules["anti_pairs"]):
             c_p_txt, c_p_del = st.columns([5, 1])
             c_p_txt.write(f"❌ Không đứng chung ca: **{pair[0]}** và **{pair[1]}**")
-            if c_p_del.button("Hủy bỏ lệnh chặn", key=f"tab_del_ap_{pair[0]}_{pair[1]}"):
-                st.session_state.rules["anti_pairs"].remove(pair)
-                st.rerun()
+            if c_p_del.button("Hủy bỏ lệnh chặn", key=f"tab_del_ap_{pair[0]}_{pair[1]}"): st.session_state.rules["anti_pairs"].remove(pair); st.rerun()
