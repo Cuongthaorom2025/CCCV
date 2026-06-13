@@ -3,8 +3,8 @@ from datetime import datetime
 import calendar
 import re
 
-# Cấu hình hiển thị chuẩn Dashboard điều hành thông minh
-st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12.2", page_icon="📅", layout="wide")
+# Cấu hình hiển thị chuẩn Dashboard di động và máy tính diện rộng
+st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12.3", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -17,10 +17,9 @@ if "members" not in st.session_state:
         "Ánh": {"excluded": [], "max": 40, "workload": 0, "history": []},
         "Anh Hải": {"excluded": [], "max": 45, "workload": 0, "history": []},
         "Chị Hoa": {"excluded": [], "max": 20, "workload": 0, "history": []},
-        "Đức Tuấn": {"excluded": [], "max": 20, "workload": 0, "history": []}
+        "Đức Tuấn": {"excluded": [], "max": 50, "workload": 0, "history": []}
     }
 
-# Danh mục công việc gốc quản lý tập trung để selectbox trong popup gọi ra
 if "global_tasks" not in st.session_state:
     st.session_state.global_tasks = ["Trực UAV", "Trực ban", "Tuần tra cơ động", "Kiểm tra kho"]
 
@@ -103,7 +102,7 @@ def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules
     return True
 
 
-# Style CSS đổ màu các trạng thái ô lịch tháng nâng cao
+# 🔥 CẬP NHẬT CSS: Thiết kế lại toàn bộ hệ thống thẻ màu xếp trong ô lịch vuông kết quả
 st.markdown("""
 <style>
     .day-box {
@@ -116,21 +115,37 @@ st.markdown("""
     .txt-date { font-weight: bold; font-size: 16px; color: #1F2937; margin-bottom: 2px; }
     .txt-count { font-size: 11px; font-weight: 500; color: #2563EB; }
     .txt-count-zero { font-size: 11px; color: #9CA3AF; }
+    
     .calendar-header {
         text-align: center; font-weight: bold; padding: 10px; 
         background-color: #1E3A8A; color: white; border-radius: 6px; margin-bottom: 10px;
     }
-    .calendar-table { width: 100%; border-collapse: collapse; font-family: sans-serif; margin: 20px 0; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border-radius: 8px; overflow: hidden; }
-    .calendar-table th { background-color: #1F2937; color: white; text-align: center; padding: 12px; font-weight: 600; border: 1px solid #374151; }
-    .calendar-table td { border: 1px solid #E5E7EB; padding: 10px; vertical-align: top; background-color: #ffffff; min-width: 125px; }
-    .row-task-title { background-color: #F3F4F6 !important; font-weight: bold; color: #111827; padding: 8px !important; }
-    .badge { display: inline-block; padding: 4px 8px; margin: 3px 2px; border-radius: 4px; font-size: 13px; font-weight: 500; }
-    .badge-pin { background-color: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE; }
-    .badge-auto { background-color: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
-    .badge-danger { background-color: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; font-weight: bold; }
-    .badge-fade { opacity: 0.15; background-color: #F3F4F6; color: #9CA3AF; }
-    .badge-highlight { background-color: #FBBF24 !important; color: #78350F !important; font-weight: bold !important; box-shadow: 0 0 8px rgba(251,191,36,0.7); }
-    .no-shift-cell { text-align: center; color: #D1D5DB; background-color: #F9FAFB; font-style: italic; font-size: 13px; }
+    
+    /* Giao diện Lịch Tháng vuông Kết quả */
+    .result-calendar-grid {
+        width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 15px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.08); border-radius: 8px; overflow: hidden;
+    }
+    .result-calendar-grid th { background-color: #1F2937; color: white; text-align: center; padding: 12px; font-weight: 600; border: 1px solid #374151; }
+    .result-calendar-grid td { border: 1px solid #D1D5DB; height: 140px; vertical-align: top; padding: 8px; background-color: white; }
+    .result-day-num { font-weight: bold; font-size: 15px; color: #111827; margin-bottom: 5px; display: block; }
+    
+    /* Định dạng thanh block công việc xếp chồng bên trong ô lịch vuông */
+    .result-shift-strip {
+        font-size: 11px; padding: 4px 6px; margin-bottom: 3px; border-radius: 4px;
+        line-height: 1.3; font-weight: 500; border-left: 3px solid transparent;
+    }
+    .strip-pin { background-color: #E0F2FE; color: #0369A1; border-left-color: #0284C7; }
+    .strip-auto { background-color: #DCFCE7; color: #15803D; border-left-color: #22C55E; }
+    .strip-danger { background-color: #FEE2E2; color: #B91C1C; border-left-color: #EF4444; font-weight: bold; }
+    
+    /* Hiệu ứng làm mờ và nổi bật khi lọc cá nhân */
+    .strip-fade { opacity: 0.15; background-color: #F3F4F6; color: #9CA3AF; border-left-color: #D1D5DB; }
+    .strip-highlight { 
+        background-color: #FEF3C7 !important; color: #92400E !important; 
+        border-left-color: #D97706 !important; font-weight: bold !important;
+        box-shadow: inset 0 0 4px rgba(217,119,6,0.2);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -232,7 +247,7 @@ def configure_day_modal(target_day):
 tab_calendar, tab_members, tab_rules = st.tabs(["🗓️ Bản Đồ Lịch Tháng & Điều Phối", "👥 Quản Lý Nhân Sự & Việc Gốc", "🛡️ Quản Lý Điều Kiện Cắt Cử"])
 
 # ------------------------------------------------------
-# TAB CENTRAL: BẢN ĐỒ LỊCH THÁNG & BẢNG KẾT QUẢ MASTER BOARD
+# TAB CENTRAL: BẢN ĐỒ LỊCH THÁNG & BẢNG KẾT QUẢ VUÔNG ĐỘC ĐÁO
 # ------------------------------------------------------
 with tab_calendar:
     col_ctrl1, col_ctrl2 = st.columns([3, 7])
@@ -315,11 +330,10 @@ with tab_calendar:
             st.rerun()
 
     st.write("---")
-    st.markdown(f"#### 🗓️ Cuốn Lịch Tháng {select_month} / {select_year}")
-    st.caption("👉 **HƯỚNG DẪN:** Bấm nút **'Sửa ngày'** bất kỳ để bật cửa sổ **Popup ghim ca** mà không lo bị sập trang.")
+    st.markdown(f"#### 🗓️ Cuốn Lịch Thiết Lập Tháng {select_month} / {select_year}")
+    st.caption("👉 **HƯỚNG DẪN:** Bấm nút **'Sửa ngày'** bất kỳ để mở Popup ghim lịch.")
 
     cols_header = st.columns(7)
-    # 🔥 ĐÃ SỬA LỖI TẠI ĐÂY: Thay week_days_text thành DAYS_OF_WEEK chuẩn xác
     for i, text in enumerate(DAYS_OF_WEEK):
         cols_header[i].markdown(f'<div class="calendar-header">{text}</div>', unsafe_allow_html=True)
 
@@ -348,69 +362,75 @@ with tab_calendar:
                     if st.button(f"Sửa ngày {day_num}", key=f"btn_pop_{curr_date_str}", use_container_width=True):
                         configure_day_modal(curr_date_str)
 
-    # --- ĐỒ HỌA BẢNG MASTER BOARD ---
+    # --- 🔥 NÂNG CẤP ĐỒ HỌA: BẢNG KẾT QUẢ DẠNG LICH THÁNG VUÔNG TỐI ƯU ---
     st.write("---")
     if not st.session_state.history:
-        st.info("💡 Hãy thiết lập lịch trình và ấn nút kích hoạt CHẠY hệ thống ở trên để xuất ma trận lịch gác.")
+        st.info("💡 Hãy thiết lập lịch trình và ấn nút kích hoạt CHẠY hệ thống ở trên để xuất ma trận lịch gác vuông.")
     else:
         latest = st.session_state.history[-1]
         view_month = latest.get("month", select_month)
         view_year = latest.get("year", select_year)
         
-        st.subheader(f"📋 Bảng Kết Quả Điều Phối Lịch Tháng {view_month}/{view_year} ({latest['time']})")
-        selected_view_member = st.selectbox("🔍 Khảo sát lịch cá nhân (Làm nổi bật tên):", options=["-- Xem toàn bộ hệ thống (Master Board) --"] + list(st.session_state.members.keys()))
+        st.subheader(f"📋 Bảng Kết Quả Điều Phối Lịch Tháng Vuông {view_month}/{view_year} ({latest['time']})")
+        selected_view_member = st.selectbox("🔍 Khảo sát lịch cá nhân nhanh (Làm nổi bật tên):", options=["-- Xem toàn bộ hệ thống (Master Board) --"] + list(st.session_state.members.keys()))
         
         historical_structure = latest.get("structure", st.session_state.monthly_structure)
-        num_days = calendar.monthrange(view_year, view_month)[1]
+        result_month_matrix = calendar.monthcalendar(view_year, view_month)
         
-        all_matrix_rows = []
-        for d_num in range(1, num_days + 1):
-            d_str = f"{view_year}-{view_month:02d}-{d_num:02d}"
-            for task, shifts in historical_structure.get(d_str, {}).items():
-                for shift in shifts:
-                    if (task, shift) not in all_matrix_rows: all_matrix_rows.append((task, shift))
-        all_matrix_rows.sort(key=lambda x: x[0])
-        
-        html_table = '<div style="overflow-x: auto;"><table class="calendar-table"><tr><th>Nhiệm vụ & Khung ca</th>'
-        for d_num in range(1, num_days + 1):
-            html_table += f'<th>Ngày {d_num}</th>'
+        # Tạo bảng ma trận lưới ô vuông bằng HTML
+        html_table = '<table class="result-calendar-grid"><tr>'
+        for day_name in DAYS_OF_WEEK:
+            html_table += f'<th>{day_name}</th>'
         html_table += '</tr>'
         
-        current_printed_task = ""
-        for task, shift in all_matrix_rows:
-            if task != current_printed_task:
-                current_printed_task = task
-                html_table += f'<tr><td class="row-task-title" colspan="{num_days+1}">📂 {task}</td></tr>'
-                
-            html_table += f'<tr><td style="font-weight:500; background-color:#fcfcfc; min-width:160px;">⏱️ {shift}</td>'
-            
-            for d_num in range(1, num_days + 1):
-                d_str = f"{view_year}-{view_month:02d}-{d_num:02d}"
-                day_tasks = historical_structure.get(d_str, {})
-                
-                if task in day_tasks and shift in day_tasks[task]:
-                    html_table += '<td>'
-                    people_list = latest['schedule'].get(d_str, {}).get(task, {}).get(shift, [])
-                    
-                    if not people_list or "⚠️ Trống" in people_list:
-                        html_table += '<span class="badge badge-danger">⚠️ Trống</span>'
-                    else:
-                        for person in people_list:
-                            pin_key = f"{d_str}_{task}_{shift}"
-                            is_pinned_cell = pin_key in st.session_state.pins and person in st.session_state.pins[pin_key]
-                            class_badge = "badge-pin" if is_pinned_cell else "badge-auto"
-                            
-                            if selected_view_member != "-- Xem toàn bộ hệ thống (Master Board) --":
-                                if person == selected_view_member: class_badge += " badge-highlight"
-                                else: class_badge += " badge-fade"
-                            html_table += f'<span class="badge {class_badge}">{person}</span>'
-                    html_table += '</td>'
+        for week in result_month_matrix:
+            html_table += '<tr>'
+            for d_idx, day_num in enumerate(week):
+                if day_num == 0:
+                    html_table += '<td style="background-color: #F9FAFB;"></td>'
                 else:
-                    html_table += '<td class="no-shift-cell">—</td>'
+                    d_str = f"{view_year}-{view_month:02d}-{day_num:02d}"
+                    html_table += '<td>'
+                    html_table += f'<div class="result-day-num">{day_num}</div>'
+                    
+                    # Hiện danh sách xin nghỉ bận nếu có
+                    busy_people = st.session_state.day_offs.get(d_str, [])
+                    if busy_people:
+                        html_table += f'<div style="font-size:10px; color:#EF4444; margin-bottom:4px; font-weight:500;">❌ Nghỉ: {", ".join(busy_people)}</div>'
+                        
+                    # Duyệt và hiển thị các block ca kíp gác nằm gọn trong ngày
+                    day_tasks = historical_structure.get(d_str, {})
+                    for task, shifts in day_tasks.items():
+                        for shift in shifts:
+                            people_list = latest['schedule'].get(d_str, {}).get(task, {}).get(shift, [])
+                            pin_key = f"{d_str}_{task}_{shift}"
+                            
+                            if not people_list or "⚠️ Trống" in people_list:
+                                html_table += f'<div class="result-shift-strip strip-danger">⚠️ {task} ({shift})</div>'
+                            else:
+                                for person in people_list:
+                                    is_pinned_cell = pin_key in st.session_state.pins and person in st.session_state.pins[pin_key]
+                                    
+                                    # Phân loại màu strip nền mặc định
+                                    strip_class = "strip-pin" if is_pinned_cell else "strip-auto"
+                                    
+                                    # Khớp thuật toán highlight bộ lọc cá nhân
+                                    if selected_view_member != "-- Xem toàn bộ hệ thống (Master Board) --":
+                                        if person == selected_view_member:
+                                            strip_class = "strip-highlight"
+                                        else:
+                                            strip_class = "strip-fade"
+                                            
+                                    html_table += f'<div class="result-shift-strip {strip_class}"><b>{person}</b>: {task} ({shift})</div>'
+                    html_table += '</td>'
             html_table += '</tr>'
             
-        html_table += '</table></div>'
+        html_table += '</table>'
         st.markdown(html_table, unsafe_allow_html=True)
+        
+        with st.expander("📊 Thống kê khối lượng phân bổ toàn tháng"):
+            for name, info in st.session_state.members.items():
+                st.write(f"- 👤 **{name}** gác tổng cộng: `{info['workload']}` ca trực trong tháng.")
 
 # ------------------------------------------------------
 # TAB 2: QUẢN LÝ NHÂN SỰ & DANH MỤC CÔNG VIỆC GỐC
