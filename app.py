@@ -62,19 +62,21 @@ with tab1:
                     
         st.write("---")
         st.markdown("**Danh sách nhân sự hiện tại:**")
-        # Duyệt qua bản sao của dict để có thể xóa trực tiếp khi đang lặp
         for name, info in list(st.session_state.members.items()):
             col_m_info, col_m_del = st.columns([3, 1])
             col_m_info.write(f"👤 **{name}**\n<small>Cấm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']}</small>", unsafe_allowed_html=True)
             
             # Nút xóa thành viên
             if col_m_del.button("❌ Xóa", key=f"del_m_{name}"):
-                # 1. Xóa khỏi danh sách tổng
                 del st.session_state.members[name]
-                # 2. Dọn dẹp dữ liệu bận/ghim ở các ngày (Tránh lỗi ghost data)
                 for d in DAYS_OF_WEEK:
                     if name in st.session_state.day_offs[d]:
                         st.session_state.day_offs[d].remove(name)
+                    
+                    # Xóa bộ nhớ cache widget tránh crash giao diện
+                    if f"off_{d}" in st.session_state:
+                        del st.session_state[f"off_{d}"]
+                        
                     st.session_state.day_pre_assignments[d] = {t: m for t, m in st.session_state.day_pre_assignments[d].items() if m != name}
                 st.toast(f"Đã xóa thành viên: {name}")
                 st.rerun()
@@ -97,16 +99,13 @@ with tab1:
                     
         st.write("---")
         st.markdown("**Danh sách công việc cần chia:**")
-        # Duyệt qua bản sao của list để xóa an toàn
         for t in list(st.session_state.tasks):
             col_t_info, col_t_del = st.columns([3, 1])
             col_t_info.write(f"🔹 {t}")
             
             # Nút xóa công việc
             if col_t_del.button("❌ Xóa", key=f"del_t_{t}"):
-                # 1. Xóa khỏi danh sách tổng
                 st.session_state.tasks.remove(t)
-                # 2. Dọn dẹp lịch ghim trước của việc này ở các ngày
                 for d in DAYS_OF_WEEK:
                     if t in st.session_state.day_pre_assignments[d]:
                         del st.session_state.day_pre_assignments[d][t]
@@ -129,7 +128,7 @@ with tab2:
             with day_tabs[idx]:
                 st.markdown(f"#### Cài đặt cho **{day}**")
                 
-                # 1. Chọn người bận/không cắt cử ngày này
+                # Chọn người bận/không cắt cử ngày này
                 st.session_state.day_offs[day] = st.multiselect(
                     f"❌ Chọn người KHÔNG cắt cử (BẬN) vào {day}:",
                     options=list(st.session_state.members.keys()),
@@ -137,9 +136,7 @@ with tab2:
                     key=f"off_{day}"
                 )
                 
-                # 2. Giao việc cụ thể trước cho riêng ai đó ngày này
                 st.markdown("🎯 **Giao việc đích danh trước (Nhiệm vụ cụ thể):**")
-                
                 current_pre = st.session_state.day_pre_assignments[day]
                 if current_pre:
                     for task, member in list(current_pre.items()):
@@ -149,7 +146,6 @@ with tab2:
                             del st.session_state.day_pre_assignments[day][task]
                             st.rerun()
                 
-                # Form ngắn để thêm chỉ định việc trước
                 with st.form(key=f"form_pre_{day}"):
                     c_m = st.selectbox("Chọn người nhận việc:", ["-- Chọn người --"] + list(st.session_state.members.keys()))
                     c_t = st.selectbox("Chọn việc giao riêng:", ["-- Chọn việc --"] + st.session_state.tasks)
@@ -168,7 +164,6 @@ with tab2:
 # ------------------------------------------------------
 with tab3:
     st.subheader("⚡ Thực thi thuật toán cắt cử")
-    
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         run_algorithm = st.button("🚀 TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN TUẦN", type="primary", use_container_width=True)
@@ -184,7 +179,6 @@ with tab3:
         if not st.session_state.tasks or not st.session_state.members:
             st.error("❌ Không thể chạy! Danh sách Thành viên hoặc Công việc đang trống.")
         else:
-            # Khởi tạo lại tải công việc về 0 để chia đều từ đầu cho tuần mới này
             for name in st.session_state.members:
                 st.session_state.members[name]['workload'] = 0
                 
@@ -195,19 +189,17 @@ with tab3:
                 day_schedule = {}
                 remaining_tasks = st.session_state.tasks.copy()
                 
-                # --- PHẦN 1: Áp dụng các việc ĐÃ CHỈ ĐỊNH TRƯỚC ---
+                # --- PHẦN 1: Việc chỉ định trước ---
                 pre_assigned = st.session_state.day_pre_assignments[day]
                 for task, member in pre_assigned.items():
-                    # Chỉ gán nếu member và task vẫn còn tồn tại trong hệ thống
                     if member in st.session_state.members and task in remaining_tasks:
                         day_schedule[task] = member
                         st.session_state.members[member]['workload'] += 1
                         st.session_state.members[member]['history'].append(f"{day}: {task} (Chỉ định)")
                         remaining_tasks.remove(task)
                 
-                # --- PHẦN 2: Tự động điều phối các công việc CÒN LẠI ---
+                # --- PHẦN 2: Tự động điều phối ---
                 busy_people = st.session_state.day_offs[day]
-                
                 for task in remaining_tasks:
                     eligible_members = []
                     for name, info in st.session_state.members.items():
@@ -220,7 +212,6 @@ with tab3:
                         day_schedule[task] = "⚠️ Không ai đủ điều kiện"
                         continue
                     
-                    # Sắp xếp chọn người ít việc nhất đợt này
                     eligible_members.sort(key=lambda x: (st.session_state.members[x]['workload'], len(st.session_state.members[x]['history'])))
                     chosen_one = eligible_members[0]
                     
