@@ -4,7 +4,10 @@ import calendar
 import re
 
 # Cấu hình hiển thị giao diện rộng rãi chuẩn Dashboard điều hành
-st.set_page_config(page_title="Lịch Điều Phối Tháng V11", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Lịch Điều Phối Tháng V11.1", page_icon="📅", layout="wide")
+
+# Danh sách các ngày trong tuần cố định
+DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
 
 # ==========================================================
 # KHỞI TẠO BỘ NHỚ HỆ THỐNG TRÊN ĐỒNG HỒ THỜI GIAN (2026)
@@ -124,7 +127,7 @@ st.markdown("""
 # ==========================================================
 # GIAO DIỆN ĐIỀU HÀNH CHÍNH
 # ==========================================================
-st.title("📅 Hệ Thống Cắt Cử Điều Phối Lịch Tháng V11")
+st.title("📅 Hệ Thống Cắt Cử Điều Phối Lịch Tháng V11.1")
 st.markdown(" *Tương tác tối cao: Chọn ngày trực tiếp trên giao diện Lịch tháng 2026* ")
 
 # Thao tác chọn Tháng/Năm trực tiếp ở góc trên
@@ -155,17 +158,14 @@ for week in month_matrix:
     for d_idx, day_num in enumerate(week):
         with cols_week[d_idx]:
             if day_num == 0:
-                # Ngày trống thuộc tháng trước/sau
                 st.markdown('<div class="day-box day-empty"></div>', unsafe_allow_html=True)
             else:
                 curr_date_str = f"{select_year}-{select_month:02d}-{day_num:02d}"
                 is_selected = (st.session_state.selected_date == curr_date_str)
                 
-                # Đếm xem ngày này đang có bao nhiêu ca trực được thiết lập
                 day_struct = st.session_state.monthly_structure.get(curr_date_str, {})
                 shift_count = sum(len(shifts) for shifts in day_struct.values())
                 
-                # Tạo giao diện hộp ngày trực quan
                 box_class = "day-active" if is_selected else "day-normal"
                 st.markdown(f"""
                 <div class="day-box {box_class}">
@@ -174,7 +174,6 @@ for week in month_matrix:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Nút tương tác chính để chuyển đổi ngày làm việc
                 if st.button("Chọn ngày", key=f"btn_select_day_{curr_date_str}", use_container_width=True):
                     st.session_state.selected_date = curr_date_str
                     st.rerun()
@@ -185,7 +184,6 @@ st.write("---")
 # KHU VỰC TƯƠNG TÁC LỊCH TRỰC TIẾP TRÊN NGÀY ĐANG CHỌN
 # ==========================================================
 target_day = st.session_state.selected_date
-# Tự động đồng bộ khóa ngày vào bộ nhớ nếu chưa có cấu hình
 if target_day not in st.session_state.monthly_structure:
     st.session_state.monthly_structure[target_day] = {
         "Trực UAV": ["Ca 1 (7h30-11h)", "Ca 2 (13h30-17h)"],
@@ -198,7 +196,6 @@ st.markdown(f"### 🛠️ BẢNG ĐIỀU KHIỂN TƯƠNG TÁC CA: **NGÀY {targe
 
 tab_day_edit, tab_rules, tab_execute = st.tabs(["⚙️ Thêm Việc / Ghim Nhanh", "🛡️ Luật Hệ Thống", "🚀 Chạy Phân Phối Lịch Tháng"])
 
-# --- SUB-TAB A: THAO TÁC THÊM CA & GHIM CHO NGÀY ĐANG CHỌN ---
 with tab_day_edit:
     c_edit_left, c_edit_right = st.columns(2)
     
@@ -215,7 +212,6 @@ with tab_day_edit:
                     st.session_state.monthly_structure[target_day][t_clean].append(s_clean)
                 st.rerun()
                 
-        # Chọn báo nghỉ bận cho ngày đang chọn
         valid_defaults = [m for m in st.session_state.day_offs[target_day] if m in st.session_state.members]
         st.session_state.day_offs[target_day] = st.multiselect(
             f"❌ Chọn người xin nghỉ (BẬN cả ngày {target_day}):",
@@ -265,7 +261,6 @@ with tab_day_edit:
                         st.session_state.monthly_structure[target_day][task].remove(shift)
                         st.rerun()
 
-# --- SUB-TAB B: THIẾT LẬP LUẬT ĐIỀU PHỐI ---
 with tab_rules:
     col_r1, col_r2 = st.columns(2)
     with col_r1:
@@ -275,20 +270,16 @@ with tab_rules:
         st.session_state.rules["max_shifts_in_window"] = st.number_input("🛡️ Số lượng ca trực tối đa được nhận:", min_value=1, max_value=5, value=st.session_state.rules["max_shifts_in_window"])
         st.session_state.rules["window_hours"] = st.number_input("⏳ Trong chu kỳ rolling-time (Giờ):", min_value=1.0, max_value=48.0, value=st.session_state.rules["window_hours"], step=1.0)
 
-# --- SUB-TAB C: THỰC THI THUẬT TOÁN ĐIỀU PHỐI THÁNG ---
 with tab_execute:
     st.subheader("🚀 Phân Phối Cắt Cử Công Bằng Toàn Tháng")
     if st.button("⚙️ BẮT ĐẦU TỰ ĐỘNG CẮT CỬ TOÀN BỘ CÁC NGÀY TRONG THÁNG", type="primary", use_container_width=True):
-        # Reset tải công việc tháng này về 0
         for name in st.session_state.members: st.session_state.members[name]['workload'] = 0
         timestamp = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
         
         flat_slots = []
-        # Quét qua toàn bộ số ngày thực tế trong tháng để bốc ca trực
         num_days = calendar.monthrange(select_year, select_month)[1]
         for day_num in range(1, num_days + 1):
             d_str = f"{select_year}-{select_month:02d}-{day_num:02d}"
-            # Đồng bộ dữ liệu trống nếu ngày đó chưa được Admin cấu hình ca trực
             if d_str not in st.session_state.monthly_structure: continue
             
             for task, shifts in st.session_state.monthly_structure[d_str].items():
@@ -301,7 +292,6 @@ with tab_execute:
                     
         member_tracks = {name: [] for name in st.session_state.members}
         
-        # BƯỚC 1: ĐIỀN CHỐT LỆNH GHIM TRÊN TIMELINE THÁNG
         for slot in flat_slots:
             pin_key = f"{slot['date_str']}_{slot['task']}_{slot['shift']}"
             if pin_key in st.session_state.pins:
@@ -311,10 +301,8 @@ with tab_execute:
                         st.session_state.members[member]['workload'] += 1
                         member_tracks[member].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"]})
                         
-        # Sắp xếp các ca theo trật tự thời gian thực tế để chia tự động
         flat_slots.sort(key=lambda x: x["abs_start"])
         
-        # BƯỚC 2: TỰ ĐỘNG CHIA CHỖ CÒN TRỐNG DỰA TRÊN LUẬT ĐỘNG
         for slot in flat_slots:
             if not slot["assigned_people"]:
                 busy_people = st.session_state.day_offs.get(slot["date_str"], [])
@@ -347,7 +335,6 @@ with tab_execute:
                 st.session_state.members[chosen]['workload'] += 1
                 member_tracks[chosen].append({"abs_start": slot["abs_start"], "abs_end": slot["abs_end"]})
 
-        # Đóng gói kết quả tháng
         month_schedule = {}
         for slot in flat_slots:
             if slot["date_str"] not in month_schedule: month_schedule[slot["date_str"]] = {}
@@ -361,29 +348,32 @@ with tab_execute:
         })
         st.rerun()
 
-    # --- ĐỒ HỌA BẢNG MASTER BOARD LỊCH THÁNG TRỰC QUAN ---
+    # --- ĐỒ HỌA BẢNG MASTER BOARD LỊCH THÁNG ---
     st.write("---")
     if not st.session_state.history:
         st.info("💡 Hãy thiết lập các ngày và ấn nút kích hoạt CHẠY hệ thống ở trên để nhận bảng lịch tháng.")
     else:
         latest = st.session_state.history[-1]
-        st.subheader(f"📋 Bảng Kết Quả Điều Phối Lịch Tháng {latest['month']}/{latest['year']} ({latest['time']})")
+        
+        # 🔥 ĐÃ SỬA: Dùng hàm .get() an toàn kèm bộ gán Fallback để né triệt để lỗi KeyError từ cache cũ
+        view_month = latest.get("month", select_month)
+        view_year = latest.get("year", select_year)
+        
+        st.subheader(f"📋 Bảng Kết Quả Điều Phối Lịch Tháng {view_month}/{view_year} ({latest['time']})")
         
         selected_view_member = st.selectbox("🔍 Tiện ích: Chọn nhân sự để làm nổi bật lịch biểu cá nhân:", options=["-- Xem toàn bộ hệ thống (Master Board) --"] + list(st.session_state.members.keys()))
         
         historical_structure = latest.get("structure", st.session_state.monthly_structure)
-        num_days = calendar.monthrange(latest['year'], latest['month'])[1]
+        num_days = calendar.monthrange(view_year, view_month)[1]
         
-        # Tạo ma trận danh sách ca trực duy nhất xuất hiện trong tháng làm hàng (row)
         all_matrix_rows = []
         for d_num in range(1, num_days + 1):
-            d_str = f"{latest['year']}-{latest['month']:02d}-{d_num:02d}"
+            d_str = f"{view_year}-{view_month:02d}-{d_num:02d}"
             for task, shifts in historical_structure.get(d_str, {}).items():
                 for shift in shifts:
                     if (task, shift) not in all_matrix_rows: all_matrix_rows.append((task, shift))
         all_matrix_rows.sort(key=lambda x: x[0])
         
-        # Xây dựng bảng HTML Ma trận lịch tháng trực quan cuộn ngang trên điện thoại
         html_table = '<div style="overflow-x: auto;"><table class="calendar-table"><tr><th>Nhiệm vụ & Khung ca</th>'
         for d_num in range(1, num_days + 1):
             html_table += f'<th>Ngày {d_num}</th>'
@@ -398,7 +388,7 @@ with tab_execute:
             html_table += f'<tr><td style="font-weight:500; background-color:#fcfcfc; min-width:160px;">⏱️ {shift}</td>'
             
             for d_num in range(1, num_days + 1):
-                d_str = f"{latest['year']}-{latest['month']:02d}-{d_num:02d}"
+                d_str = f"{view_year}-{view_month:02d}-{d_num:02d}"
                 day_tasks = historical_structure.get(d_str, {})
                 
                 if task in day_tasks and shift in day_tasks[task]:
