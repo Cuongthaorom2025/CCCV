@@ -33,7 +33,7 @@ if "rules" not in st.session_state:
         "max_shifts_in_window": 2,        
         "window_hours": 24.0,             
         "min_rest_hours": 2.0,
-        "night_shift_morning_off": True,  # 🔥 MỚI: Bật/Tắt luật trực đêm nghỉ sáng hôm sau
+        "night_shift_morning_off": True,  # Bật/Tắt luật trực đêm nghỉ sáng hôm sau
         "anti_pairs": []                  
     }
 
@@ -72,7 +72,6 @@ def parse_shift_to_absolute_hours(date_str, shift_str):
         
     abs_start = base_hours + start_t
     abs_end = base_hours + end_t + (24.0 if end_t < start_t else 0.0)
-    # 🔥 ĐÃ SỬA: Trả thêm giờ start_t và end_t gốc để tính toán quy tắc né ca sáng
     return start_t, end_t, abs_start, abs_end
 
 
@@ -97,15 +96,14 @@ def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules
             elif t["abs_start"] >= new_end:
                 if (t["abs_start"] - new_end) < rules["min_rest_hours"]: return False
                 
-        # 3. 🔥 QUY TẮC MỚI: Trực đêm/xuyên đêm hôm trước được nghỉ buổi sáng hôm sau (trước 12h00)
+        # 3. QUY TẮC MỚI: Trực đêm/xuyên đêm hôm trước được nghỉ buổi sáng hôm sau (trước 12h00)
         if rules.get("night_shift_morning_off", True):
-            # Tính mốc thời gian đầu ngày của ca trực đang xét (00:00 AM của ngày slot) quy ra số giờ
             slot_day_start_hours = (slot_date - epoch).days * 24.0
             end_hour_on_slot_day = t["abs_end"] - slot_day_start_hours
             
-            # Nếu ca cũ kết thúc vào khoảng từ 0h00 đến 8h00 sáng ngày hôm nay (Chứng tỏ gác đêm hôm trước)
+            # Nếu ca cũ kết thúc vào khoảng từ 0h00 đến 8h00 sáng ngày hôm nay (gác xuyên đêm)
             if 0.0 < end_hour_on_slot_day <= 8.0:
-                # Thì mọi ca trực tự động vào ngày hôm nay bắt đầu trước 12h00 trưa đều không được phép gán
+                # Thì mọi ca trực tự động vào ngày hôm nay bắt đầu trước 12h00 trưa đều bị chặn
                 if slot["start_t"] < 12.0:
                     return False
 
@@ -125,7 +123,7 @@ def validate_custom_rules(name, slot, member_tracks, current_shift_people, rules
     return True
 
 
-# Style CSS đổ màu bảng và các block ca kíp gác
+# Style CSS đồ màu bảng và các block ca kíp gác
 st.markdown("""
 <style>
     .day-box { border-radius: 8px; padding: 10px; margin-bottom: 5px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); min-height: 85px; }
@@ -231,7 +229,7 @@ with tab_calendar:
         select_year = st.number_input("📆 Chọn Năm trực:", min_value=2026, max_value=2030, value=2026)
     with col_ctrl2:
         st.write("<br>", unsafe_allow_html=True)
-        if st.button("🚀 KÍCH HOẠT TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN THÁNG", type="primary", use_container_width=True):
+        if st.button("🚀 KÍCH HOẠ TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN THÁNG", type="primary", use_container_width=True):
             for name in st.session_state.members: st.session_state.members[name]['workload'] = 0
             timestamp = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
             
@@ -444,7 +442,7 @@ with tab_members:
                 st.rerun()
 
 # ------------------------------------------------------
-# TAB 3: LUẬT ĐIỀU PHỐI NÂNG CAO (BỔ SUNG CHECKBOX CHO QUY TẮC MỚI)
+# TAB 3: LUẬT ĐIỀU PHỐI NÂNG CAO
 # ------------------------------------------------------
 with tab_rules:
     st.subheader("🛠️ Bộ Cấu Hình Điều Kiện Cắt Cử")
@@ -453,7 +451,7 @@ with tab_rules:
         st.session_state.rules["block_consecutive"] = st.checkbox("🔒 Nghiêm cấm gác 2 ca liên tục liền kề nhau", value=st.session_state.rules["block_consecutive"])
         st.session_state.rules["min_rest_hours"] = st.number_input("⏱️ Thời gian nghỉ tối thiểu bắt buộc giữa các ca trực (Giờ):", min_value=0.0, max_value=12.0, value=st.session_state.rules["min_rest_hours"], step=0.5)
         
-        # 🔥 ĐÂY LÀ KHU VỰC THÊM QUY TẮC MỚI TRÊN UI GIAO DIỆN
+        # Công tắc Bật/Tắt quy tắc trực đêm được nghỉ sáng hôm sau
         st.session_state.rules["night_shift_morning_off"] = st.checkbox(
             "🌙 Trực ca đêm/xuyên đêm được nghỉ buổi sáng hôm sau (Không xếp ca gác trước 12h00 trưa)", 
             value=st.session_state.rules.get("night_shift_morning_off", True)
