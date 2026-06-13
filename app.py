@@ -3,7 +3,7 @@ from datetime import datetime
 import re
 
 # Cấu hình hiển thị chuẩn giao diện Dashboard rộng rãi
-st.set_page_config(page_title="Lịch Điều Phối V10", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Lịch Điều Phối V10.1", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -19,7 +19,7 @@ if "members" not in st.session_state:
         "Đức Tuấn": {"excluded": [], "max": 20, "workload": 0, "history": []}
     }
 
-# 🔥 THAY ĐỔI CỐT LÕI V10: Cấu trúc Công việc & Ca trực được lưu biệt lập theo từng ngày
+# Cấu trúc Công việc & Ca trực được lưu biệt lập theo từng ngày
 if "daily_structure" not in st.session_state:
     st.session_state.daily_structure = {
         day: {
@@ -118,8 +118,8 @@ st.markdown("""
 # ==========================================================
 # GIAO DIỆN ĐIỀU HÀNH CHÍNH
 # ==========================================================
-st.title("📆 Hệ Thống Cắt Cử Công Việc Trực Quan V10")
-st.markdown(" *Đỉnh cao điều phối: Thêm Việc, tạo Ca trực tiếp trên Lịch Ngày độc lập* ")
+st.title("📆 Hệ Thống Cắt Cử Công Việc Trực Quan V10.1")
+st.markdown(" *Đã vá lỗi bảo vệ bộ nhớ đệm — Thêm Việc, tạo Ca độc lập từng ngày* ")
 
 tab1, tab2, tab3, tab4 = st.tabs(["👥 Quản Lý Nhân Sự Gốc", "🛡️ Thiết Lập Luật Điều Phối", "📅 Lập Lịch Trực Tiếp Trên Ngày", "🚀 Thực Thi & Bảng Kết Quả"])
 
@@ -178,7 +178,7 @@ with tab2:
                 st.rerun()
 
 # ------------------------------------------------------
-# 🔥 TAB 3: THIẾT LẬP TRỰC TIẾP TRÊN LỊCH NGÀY (MỚI NÂNG CẤP)
+# TAB 3: THIẾT LẬP TRỰC TIẾP TRÊN LỊCH NGÀY
 # ------------------------------------------------------
 with tab3:
     st.subheader("📅 Ma Trận Lập Lịch Chi Tiết Theo Từng Ngày")
@@ -189,13 +189,10 @@ with tab3:
         with day_tabs[idx]:
             st.markdown(f"## 🛠️ Điều phối lịch trình cho **{day}**")
             
-            # Khung chọn người bận cả ngày
             valid_defaults = [m for m in st.session_state.day_offs[day] if m in st.session_state.members]
             st.session_state.day_offs[day] = st.multiselect(f"❌ Chọn nhân sự xin nghỉ (BẬN toàn bộ ngày {day}):", options=list(st.session_state.members.keys()), default=valid_defaults, key=f"off_{day}")
             
             st.write("---")
-            
-            # KHU VỰC THÊM CÔNG VIỆC VÀ CA TRỰC TIẾP VÀO NGÀY
             st.markdown("### ➕ Thêm Việc & Ca trực tiếp vào ngày này")
             c_add_t, c_add_s = st.columns(2)
             
@@ -220,8 +217,6 @@ with tab3:
                                 st.rerun()
 
             st.write("---")
-            
-            # TRỢ LÝ VĂN BẢN GHIM NHANH VÀ TỰ TẠO DỮ LIỆU CHO NGÀY
             st.markdown("### ⚡ Trợ lý Ghim Tốc Hành bằng văn bản")
             st.caption("Cú pháp: `Tên người - Tên việc - Tên ca`. Nếu Việc hoặc Ca của ngày này chưa có, hệ thống sẽ tự động tạo luôn!")
             quick_input = st.text_input("Nhập câu lệnh ghim nhanh cho ngày này:", placeholder="Ví dụ: Ánh - Trực UAV - Ca 1 (7h30-11h)", key=f"text_input_{day}")
@@ -232,10 +227,8 @@ with tab3:
                     if len(parts) == 3:
                         p_name, p_task, p_shift = parts[0], parts[1], parts[2]
                         
-                        # Tự tạo thành viên nếu chưa có
                         if p_name not in st.session_state.members:
                             st.session_state.members[p_name] = {"excluded": [], "max": 10, "workload": 0, "history": []}
-                        # 🔥 Tự động tạo việc và ca cho RIÊNG ngày này trên lịch
                         if p_task not in st.session_state.daily_structure[day]:
                             st.session_state.daily_structure[day][p_task] = []
                         if p_shift not in st.session_state.daily_structure[day][p_task]:
@@ -250,8 +243,6 @@ with tab3:
                         st.error("Cú pháp chuẩn phải cách dấu gạch ngang: Người - Việc - Ca")
 
             st.write("---")
-            
-            # HIỂN THỊ CẤU TRÚC LỊCH HIỆN TẠI CỦA NGÀY (CÓ NÚT XÓA TRỰC TIẾP)
             st.markdown("#### 📊 Trực quan sơ đồ ca trực cấu hình hôm nay:")
             if not st.session_state.daily_structure[day]:
                 st.caption("Ngày hôm nay đang trống lịch trình.")
@@ -299,7 +290,6 @@ with tab4:
         for name in st.session_state.members: st.session_state.members[name]['workload'] = 0
         timestamp = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
         
-        # Tạo danh sách phẳng từ cấu trúc lịch ngày động
         flat_slots = []
         for d_idx, day in enumerate(DAYS_OF_WEEK):
             for task, shifts in st.session_state.daily_structure[day].items():
@@ -366,7 +356,6 @@ with tab4:
         for slot in flat_slots:
             week_schedule[slot["day_name"]][slot["task"]][slot["shift"]] = slot["assigned_people"]
             
-        # Lưu bản chụp cấu hình lịch trực tuần này vào lịch sử log
         deep_copied_structure = {d: {t: list(s) for t, s in tasks.items()} for d, tasks in st.session_state.daily_structure.items()}
         st.session_state.history.append({
             "time": timestamp,
@@ -375,7 +364,7 @@ with tab4:
         })
         st.rerun()
 
-    # --- ĐỒ HỌA MA TRẬN LỊCH TRỰC DYNAMIC V10 ---
+    # --- ĐỒ HỌA MA TRẬN LỊCH TRỰC DYNAMIC V10.1 ---
     st.write("---")
     if not st.session_state.history:
         st.info("💡 Chưa có bảng lịch hoạt động. Hãy cấu hình ca trực tại Tab 3 rồi bấm nút CHẠY hệ thống!")
@@ -385,14 +374,15 @@ with tab4:
         st.markdown("### 🔍 Bộ lọc tìm kiếm lịch cá nhân")
         selected_view_member = st.selectbox("Chọn nhân sự để hiển thị nổi bật trên lịch biểu:", options=["-- Xem toàn bộ hệ thống (Master Board) --"] + list(st.session_state.members.keys()))
         
-        # Tạo ma trận danh sách ca trực duy nhất xuất hiện trong tuần để làm hàng (row)
+        # 🔥 ĐÃ SỬA: Sử dụng hàm .get() an toàn kèm fallback để bảo vệ bộ nhớ đệm cũ không bị crash
+        historical_structure = latest.get("structure", st.session_state.daily_structure)
+        
         all_matrix_rows = []
         for day in DAYS_OF_WEEK:
-            for task, shifts in latest["structure"].get(day, {}).items():
+            for task, shifts in historical_structure.get(day, {}).items():
                 for shift in shifts:
                     if (task, shift) not in all_matrix_rows:
                         all_matrix_rows.append((task, shift))
-        # Sắp xếp theo tên công việc
         all_matrix_rows.sort(key=lambda x: x[0])
         
         # Xây dựng bảng HTML trực quan
@@ -403,7 +393,6 @@ with tab4:
         
         current_printed_task = ""
         for task, shift in all_matrix_rows:
-            # Viết tiêu đề phân tách dòng công việc lớn nếu đổi việc
             if task != current_printed_task:
                 current_printed_task = task
                 html_table += f'<tr><td class="row-task-title" colspan="8">📂 {task}</td></tr>'
@@ -411,8 +400,8 @@ with tab4:
             html_table += f'<tr><td style="font-weight:500; background-color:#fcfcfc;">⏱️ {shift}</td>'
             
             for day in DAYS_OF_WEEK:
-                # Kiểm tra xem ngày hôm nay có cấu hình ca trực này không
-                day_tasks = latest["structure"].get(day, {})
+                # 🔥 ĐÃ SỬA: Gọi biến historical_structure an toàn tại đây
+                day_tasks = historical_structure.get(day, {})
                 if task in day_tasks and shift in day_tasks[task]:
                     html_table += '<td>'
                     people_list = latest['schedule'].get(day, {}).get(task, {}).get(shift, [])
@@ -433,7 +422,6 @@ with tab4:
                             html_table += f'<span class="badge {class_badge}">{person}</span>'
                     html_table += '</td>'
                 else:
-                    # Nếu ngày hôm đó không có ca này gán trên lịch
                     html_table += '<td class="no-shift-cell">—</td>'
             html_table += '</tr>'
             
