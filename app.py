@@ -4,7 +4,7 @@ import calendar
 import re
 
 # Cấu hình hiển thị chuẩn Dashboard điều hành thông minh
-st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12.1", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -19,6 +19,10 @@ if "members" not in st.session_state:
         "Chị Hoa": {"excluded": [], "max": 20, "workload": 0, "history": []},
         "Đức Tuấn": {"excluded": [], "max": 50, "workload": 0, "history": []}
     }
+
+# 🔥 MỚI: Danh mục công việc gốc quản lý tập trung để selectbox trong popup gọi ra
+if "global_tasks" not in st.session_state:
+    st.session_state.global_tasks = ["Trực UAV", "Trực ban", "Tuần tra cơ động", "Kiểm tra kho"]
 
 if "monthly_structure" not in st.session_state:
     st.session_state.monthly_structure = {}
@@ -105,7 +109,6 @@ st.markdown("""
     .day-box {
         border-radius: 8px; padding: 10px; margin-bottom: 5px; text-align: center;
         box-shadow: 0 2px 4px rgba(0,0,0,0.02); min-height: 85px;
-        transition: all 0.2s ease-in-out;
     }
     .day-normal { border: 1px solid #E5E7EB; background-color: #FFFFFF; }
     .day-configured { border: 1px solid #3B82F6; background-color: #F0F6FF; box-shadow: 0 2px 5px rgba(59,130,246,0.1); }
@@ -133,18 +136,14 @@ st.markdown("""
 
 
 # ==========================================================
-# 🔥 HÀM POPUP DIALOG CHỨA BẢNG THAO TÁC CÔNG VIỆC (MỚI NÂNG CẤP)
+# 🔥 BẢNG POPUP DIALOG TƯƠNG TÁC ĐÃ ĐƯỢC NÂNG CẤP HOÀN TOÀN
 # ==========================================================
 @st.dialog("⚙️ Bảng Điều Khiển Ô Lịch Ngày")
 def configure_day_modal(target_day):
     st.markdown(f"### 📅 Cấu hình lịch gác ngày: **{target_day}**")
     
-    # Khởi tạo nhanh cấu trúc mặc định nếu ô lịch ngày này chưa từng được chạm vào
     if target_day not in st.session_state.monthly_structure:
-        st.session_state.monthly_structure[target_day] = {
-            "Trực UAV": ["Ca 1 (7h30-11h)", "Ca 2 (13h30-17h)"],
-            "Trực ban": ["Ca Sáng (08:00-12:00)"]
-        }
+        st.session_state.monthly_structure[target_day] = {}
     if target_day not in st.session_state.day_offs:
         st.session_state.day_offs[target_day] = []
         
@@ -153,17 +152,24 @@ def configure_day_modal(target_day):
     with c_pop1:
         st.markdown("**➕ Thêm việc & Ca trực:**")
         with st.form(key=f"pop_form_add_{target_day}"):
-            t_input = st.text_input("Tên công việc:")
-            s_input = st.text_input("Ca & Khung giờ (Ví dụ: Ca 3 (18h-21h)):")
-            if st.form_submit_button("➕ Thêm vào ô lịch") and t_input.strip() and s_input.strip():
-                t_clean, s_clean = t_input.strip(), s_input.strip()
-                if t_clean not in st.session_state.monthly_structure[target_day]:
-                    st.session_state.monthly_structure[target_day][t_clean] = []
-                if s_clean not in st.session_state.monthly_structure[target_day][t_clean]:
-                    st.session_state.monthly_structure[target_day][t_clean].append(s_clean)
-                st.rerun()
+            # 🔥 ĐÃ SỬA: Chọn công việc từ danh mục gốc đã tạo, không cần gõ tay
+            if not st.session_state.global_tasks:
+                st.warning("Hãy thêm công việc gốc ở Tab 'Quản lý Nhân Sự & Việc' trước!")
+                chosen_task = None
+            else:
+                chosen_task = st.selectbox("Chọn công việc gác:", options=st.session_state.global_tasks)
                 
-        # Chọn nhân sự xin nghỉ bận ngày này
+            s_input = st.text_input("Ca & Khung giờ (Ví dụ: Ca 1 (7h30-11h)):")
+            
+            # 🔥 ĐÃ SỬA: Bấm nút thêm chỉ cập nhật State, KHÔNG gọi st.rerun() gây tự đóng popup
+            if st.form_submit_button("➕ Thêm vào ngày này") and chosen_task and s_input.strip():
+                s_clean = s_input.strip()
+                if chosen_task not in st.session_state.monthly_structure[target_day]:
+                    st.session_state.monthly_structure[target_day][chosen_task] = []
+                if s_clean not in st.session_state.monthly_structure[target_day][chosen_task]:
+                    st.session_state.monthly_structure[target_day][chosen_task].append(s_clean)
+        
+        # Chọn nhân sự xin nghỉ bận ngày này (Tự lưu không đóng popup)
         valid_defaults = [m for m in st.session_state.day_offs[target_day] if m in st.session_state.members]
         st.session_state.day_offs[target_day] = st.multiselect(
             f"❌ Nhân sự nghỉ (BẬN cả ngày):",
@@ -172,31 +178,40 @@ def configure_day_modal(target_day):
         
     with c_pop2:
         st.markdown("**⚡ Trợ lý Ghim Tốc Hành bằng văn bản:**")
-        st.caption("Cú pháp nhanh di động: `Người - Việc - Ca` ")
+        st.caption("Cú pháp nhanh: `Người - Việc - Ca`. Việc nhập vào đây phải nằm trong danh mục việc gốc.")
         quick_input = st.text_input("Nhập câu lệnh ghim nhanh:", placeholder="Ví dụ: Ánh - Trực UAV - Ca 1 (7h30-11h)", key=f"pop_txt_quick_{target_day}")
+        
+        # 🔥 ĐÃ SỬA: Xử lý ghim nhanh không tự đóng popup
         if st.button("🚀 Kích hoạt ghim nhanh", key=f"pop_btn_quick_{target_day}"):
             if quick_input:
                 parts = [p.strip() for p in re.split(r'[,;|]|\s+-\s+|\s+–\s+|\s+—\s+', quick_input) if p.strip()]
                 if len(parts) == 3:
                     p_name, p_task, p_shift = parts[0], parts[1], parts[2]
-                    if p_name not in st.session_state.members: st.session_state.members[p_name] = {"excluded": [], "max": 40, "workload": 0, "history": []}
-                    if p_task not in st.session_state.monthly_structure[target_day]: st.session_state.monthly_structure[target_day][p_task] = []
-                    if p_shift not in st.session_state.monthly_structure[target_day][p_task]: st.session_state.monthly_structure[target_day][p_task].append(p_shift)
                     
-                    pin_key = f"{target_day}_{p_task}_{p_shift}"
-                    if pin_key not in st.session_state.pins: st.session_state.pins[pin_key] = []
-                    if p_name not in st.session_state.pins[pin_key]: st.session_state.pins[pin_key].append(p_name)
-                    st.rerun()
+                    if p_name not in st.session_state.members: 
+                        st.session_state.members[p_name] = {"excluded": [], "max": 40, "workload": 0, "history": []}
+                    if p_task not in st.session_state.global_tasks:
+                        st.error(f"Công việc '{p_task}' không tồn tại trong danh mục gốc!")
+                    else:
+                        if p_task not in st.session_state.monthly_structure[target_day]: 
+                            st.session_state.monthly_structure[target_day][p_task] = []
+                        if p_shift not in st.session_state.monthly_structure[target_day][p_task]: 
+                            st.session_state.monthly_structure[target_day][p_task].append(p_shift)
+                        
+                        pin_key = f"{target_day}_{p_task}_{p_shift}"
+                        if pin_key not in st.session_state.pins: st.session_state.pins[pin_key] = []
+                        if p_name not in st.session_state.pins[pin_key]: st.session_state.pins[pin_key].append(p_name)
 
     st.write("---")
-    st.markdown("#### 📊 Sơ đồ nhiệm vụ hiện tại của ngày:")
+    st.markdown("#### 📊 Sơ đồ ca trực đang thiết lập của ngày:")
+    
+    # 🔥 ĐÃ SỬA: Các nút xóa việc/ca/ghim chỉ cập nhật State, tận dụng cơ chế render tự nhiên của Dialog, không tự sập popup
     for task, shifts in list(st.session_state.monthly_structure[target_day].items()):
         with st.container(border=True):
             col_t_title, col_t_del = st.columns([5, 1])
             col_t_title.markdown(f"📂 **Nhiệm vụ: {task}**")
             if col_t_del.button("Xóa việc", key=f"pop_del_t_{target_day}_{task}"):
                 del st.session_state.monthly_structure[target_day][task]
-                st.rerun()
                 
             for shift in shifts:
                 pin_key = f"{target_day}_{task}_{shift}"
@@ -206,35 +221,32 @@ def configure_day_modal(target_day):
                     col_s_view.write(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ 📌 Ghim: **{', '.join(st.session_state.pins[pin_key])}**")
                     if col_s_act.button("Hủy ghim", key=f"pop_unpin_{pin_key}"):
                         del st.session_state.pins[pin_key]
-                        st.rerun()
                 else:
                     col_s_view.write(f"&nbsp;&nbsp;&nbsp;&nbsp;⏱️ {shift} ➔ 🤖 *Tự động chia*")
                     if col_s_act.button("Xóa ca", key=f"pop_del_s_{target_day}_{task}_{shift}"):
                         st.session_state.monthly_structure[target_day][task].remove(shift)
-                        st.rerun()
                         
     st.write("---")
-    if st.button("Xong & Đóng Cửa Sổ", type="primary", use_container_width=True):
+    # 🔥 NÚT CHỐT: Chỉ khi bấm nút này, hệ thống mới gọi lệnh rerun tổng để đóng popup và tải lại bảng Master Board ở ngoài
+    if st.button("💾 XONG & ĐÓNG CỬA SỔ (Cập nhật lên Lịch Tháng)", type="primary", use_container_width=True):
         st.rerun()
 
 
 # ==========================================================
-# CƠ CẤU GIAO DIỆN CHÍNH (TẬP TRUNG VÀO LỊCH THÁNG)
+# CƠ CẤU HỆ THỐNG TABS GIAO DIỆN CHÍNH
 # ==========================================================
-tab_calendar, tab_members, tab_rules = st.tabs(["🗓️ Bản Đồ Lịch Tháng & Điều Phối", "👥 Hồ Sơ Nhân Sự Tổng", "🛡️ Quản Lý Điều Kiện Cắt Cử"])
+tab_calendar, tab_members, tab_rules = st.tabs(["🗓️ Bản Đồ Lịch Tháng & Điều Phối", "👥 Quản Lý Nhân Sự & Việc Gốc", "🛡️ Quản Lý Điều Kiện Cắt Cử"])
 
 # ------------------------------------------------------
 # TAB CENTRAL: BẢN ĐỒ LỊCH THÁNG & BẢNG KẾT QUẢ MASTER BOARD
 # ------------------------------------------------------
 with tab_calendar:
-    # Thanh điều khiển tháng năm
     col_ctrl1, col_ctrl2 = st.columns([3, 7])
     with col_ctrl1:
-        select_month = st.selectbox("📅 Chọn Tháng gác:", list(range(1, 13)), index=5) # Mặc định Tháng 6
+        select_month = st.selectbox("📅 Chọn Tháng gác:", list(range(1, 13)), index=5) 
         select_year = st.number_input("📆 Chọn Năm trực:", min_value=2026, max_value=2030, value=2026)
     with col_ctrl2:
         st.write("<br>", unsafe_allow_html=True)
-        # Nút kích hoạt thuật toán chia việc tổng thể toàn tháng
         if st.button("🚀 KÍCH HOẠT TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN THÁNG", type="primary", use_container_width=True):
             for name in st.session_state.members: st.session_state.members[name]['workload'] = 0
             timestamp = datetime.now().strftime("%H:%M:%S - %d/%m/%Y")
@@ -255,7 +267,6 @@ with tab_calendar:
                         
             member_tracks = {name: [] for name in st.session_state.members}
             
-            # ĐIỀN GHIM TRƯỚC
             for slot in flat_slots:
                 pin_key = f"{slot['date_str']}_{slot['task']}_{slot['shift']}"
                 if pin_key in st.session_state.pins:
@@ -267,7 +278,6 @@ with tab_calendar:
                             
             flat_slots.sort(key=lambda x: x["abs_start"])
             
-            # TỰ ĐỘNG PHÂN PHỐI
             for slot in flat_slots:
                 if not slot["assigned_people"]:
                     busy_people = st.session_state.day_offs.get(slot["date_str"], [])
@@ -312,11 +322,9 @@ with tab_calendar:
 
     st.write("---")
     st.markdown(f"#### 🗓️ Cuốn Lịch Tháng {select_month} / {select_year}")
-    st.caption("👉 **HƯỚNG DẪN:** Bấm nút tên ngày bên dưới để mở cửa sổ **POPUP** thiết lập nhanh công việc cho ngày đó.")
+    st.caption("👉 **HƯỚNG DẪN:** Bấm nút **'Sửa ngày'** bất kỳ để bật cửa sổ **Popup ghim ca** mà không lo bị sập trang.")
 
-    # Render giao diện Lưới lịch tháng 7 cột
     cols_header = st.columns(7)
-    week_days_text = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
     for i, text in enumerate(week_days_text):
         cols_header[i].markdown(f'<div class="calendar-header">{text}</div>', unsafe_allow_html=True)
 
@@ -342,14 +350,13 @@ with tab_calendar:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # 🔥 Kích hoạt trực tiếp hàm Popup Dialog khi bấm nút ngày
                     if st.button(f"Sửa ngày {day_num}", key=f"btn_pop_{curr_date_str}", use_container_width=True):
                         configure_day_modal(curr_date_str)
 
-    # --- HIỂN THỊ KẾT QUẢ BẢNG ĐỒ HỌA THÁNG ---
+    # --- ĐỒ HỌA BẢNG MASTER BOARD ---
     st.write("---")
     if not st.session_state.history:
-        st.info("💡 Hãy thiết lập các ngày trực và bấm nút 'KÍCH HOẠT TỰ ĐỘNG CẮT CỬ ĐỀU TOÀN THÁNG' để nhận bảng lịch.")
+        st.info("💡 Hãy thiết lập lịch trình và ấn nút kích hoạt CHẠY hệ thống ở trên để xuất ma trận lịch gác.")
     else:
         latest = st.session_state.history[-1]
         view_month = latest.get("month", select_month)
@@ -409,32 +416,48 @@ with tab_calendar:
             
         html_table += '</table></div>'
         st.markdown(html_table, unsafe_allow_html=True)
-        
-        with st.expander("📊 Thống kê tải công việc gác toàn tháng"):
-            for name, info in st.session_state.members.items():
-                st.write(f"- 👤 **{name}** gác tổng cộng: `{info['workload']}` ca trực trong tháng.")
 
 # ------------------------------------------------------
-# TAB 2: QUẢN LÝ THÀNH VIÊN HỆ THỐNG
+# 🔥 TAB 2: QUẢN LÝ NHÂN SỰ & DANH MỤC CÔNG VIỆC GỐC
 # ------------------------------------------------------
 with tab_members:
-    st.subheader("👥 Quản Lý Hồ Sơ Nhân Sự")
-    with st.expander("➕ Thêm nhân sự mới", expanded=False):
-        m_name = st.text_input("Tên nhân sự:")
-        m_exclude = st.text_input("Việc không thể gác (Cách nhau bằng dấu phẩy):")
-        m_max = st.number_input("Số ca trực tối đa được nhận trong tháng:", min_value=1, value=40)
-        if st.button("Lưu hồ sơ nhân sự"):
-            if m_name.strip():
-                excluded_list = [t.strip() for t in m_exclude.split(",") if t.strip()]
-                st.session_state.members[m_name.strip()] = {"excluded": excluded_list, "max": m_max, "workload": 0, "history": []}
+    c_m1, c_m2 = st.columns(2)
+    
+    with c_m1:
+        st.subheader("👥 Quản Lý Hồ Sơ Nhân Sự")
+        with st.expander("➕ Thêm nhân sự mới", expanded=False):
+            m_name = st.text_input("Tên nhân sự:")
+            m_exclude = st.text_input("Việc không thể gác (Cách nhau bằng dấu phẩy):")
+            m_max = st.number_input("Số ca trực tối đa/tháng:", min_value=1, value=40)
+            if st.button("Lưu hồ sơ nhân sự"):
+                if m_name.strip():
+                    excluded_list = [t.strip() for t in m_exclude.split(",") if t.strip()]
+                    st.session_state.members[m_name.strip()] = {"excluded": excluded_list, "max": m_max, "workload": 0, "history": []}
+                    st.rerun()
+        st.write("---")
+        for name, info in list(st.session_state.members.items()):
+            c_info, c_del = st.columns([5, 1])
+            c_info.markdown(f"👤 **{name}** \n<small>Cấm gác: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']} ca</small>", unsafe_allow_html=True)
+            if c_del.button("Xóa", key=f"tab_del_m_{name}"):
+                del st.session_state.members[name]
                 st.rerun()
-    st.write("---")
-    for name, info in list(st.session_state.members.items()):
-        c_info, c_del = st.columns([5, 1])
-        c_info.markdown(f"👤 **{name}** &nbsp;&nbsp;|&nbsp;&nbsp; <small>Danh mục cấm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} &nbsp;&nbsp;•&nbsp;&nbsp; Giới hạn tháng: {info['max']} ca</small>", unsafe_allow_html=True)
-        if c_del.button("Xóa hồ sơ", key=f"tab_del_m_{name}"):
-            del st.session_state.members[name]
-            st.rerun()
+                
+    with c_m2:
+        st.subheader("📂 Danh Mục Công Việc Gốc")
+        with st.expander("➕ Định nghĩa đầu việc mới", expanded=False):
+            t_g_input = st.text_input("Nhập tên đầu việc cốt lõi (Ví dụ: Tuần tra biên giới):")
+            if st.button("Lưu công việc gốc"):
+                if t_g_input.strip() and t_g_input.strip() not in st.session_state.global_tasks:
+                    st.session_state.global_tasks.append(t_g_input.strip())
+                    st.rerun()
+        st.write("---")
+        st.markdown("**Danh sách công việc đang khả dụng trên hệ thống:**")
+        for idx, task_g in enumerate(st.session_state.global_tasks):
+            c_t_name, c_t_del = st.columns([5, 1])
+            c_t_name.write(f"🔹 **{task_g}**")
+            if c_t_del.button("Xóa việc", key=f"tab_del_tg_{idx}_{task_g}"):
+                st.session_state.global_tasks.remove(task_g)
+                st.rerun()
 
 # ------------------------------------------------------
 # TAB 3: LUẬT ĐIỀU PHỐI NÂNG CAO
@@ -444,7 +467,7 @@ with tab_rules:
     col_r1, col_r2 = st.columns(2)
     with col_r1:
         st.session_state.rules["block_consecutive"] = st.checkbox("🔒 Nghiêm cấm gác 2 ca liên tục liền kề nhau", value=st.session_state.rules["block_consecutive"])
-        st.session_state.rules["min_rest_hours"] = st.number_input("⏱ shrink rảnh nghỉ giữa 2 ca trực (Giờ):", min_value=0.0, max_value=12.0, value=st.session_state.rules["min_rest_hours"], step=0.5)
+        st.session_state.rules["min_rest_hours"] = st.number_input("⏱️ Thời gian nghỉ tối thiểu bắt buộc giữa các ca trực (Giờ):", min_value=0.0, max_value=12.0, value=st.session_state.rules["min_rest_hours"], step=0.5)
     with col_r2:
         st.session_state.rules["max_shifts_in_window"] = st.number_input("🛡️ Số lượng ca trực tối đa gác trong chu kỳ:", min_value=1, max_value=5, value=st.session_state.rules["max_shifts_in_window"])
         st.session_state.rules["window_hours"] = st.number_input("⏳ Độ dài chu kỳ rolling-time (Giờ):", min_value=1.0, max_value=48.0, value=st.session_state.rules["window_hours"], step=1.0)
