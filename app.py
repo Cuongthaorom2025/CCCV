@@ -4,7 +4,7 @@ import calendar
 import re
 
 # Cấu hình hiển thị chuẩn Dashboard điều hành thông minh
-st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12.1", page_icon="📅", layout="wide")
+st.set_page_config(page_title="Lịch Điều Phối Cao Cấp V12.2", page_icon="📅", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -17,10 +17,10 @@ if "members" not in st.session_state:
         "Ánh": {"excluded": [], "max": 40, "workload": 0, "history": []},
         "Anh Hải": {"excluded": [], "max": 45, "workload": 0, "history": []},
         "Chị Hoa": {"excluded": [], "max": 20, "workload": 0, "history": []},
-        "Đức Tuấn": {"excluded": [], "max": 50, "workload": 0, "history": []}
+        "Đức Tuấn": {"excluded": [], "max": 20, "workload": 0, "history": []}
     }
 
-# 🔥 MỚI: Danh mục công việc gốc quản lý tập trung để selectbox trong popup gọi ra
+# Danh mục công việc gốc quản lý tập trung để selectbox trong popup gọi ra
 if "global_tasks" not in st.session_state:
     st.session_state.global_tasks = ["Trực UAV", "Trực ban", "Tuần tra cơ động", "Kiểm tra kho"]
 
@@ -136,7 +136,7 @@ st.markdown("""
 
 
 # ==========================================================
-# 🔥 BẢNG POPUP DIALOG TƯƠNG TÁC ĐÃ ĐƯỢC NÂNG CẤP HOÀN TOÀN
+# BẢNG POPUP DIALOG TƯƠNG TÁC
 # ==========================================================
 @st.dialog("⚙️ Bảng Điều Khiển Ô Lịch Ngày")
 def configure_day_modal(target_day):
@@ -152,7 +152,6 @@ def configure_day_modal(target_day):
     with c_pop1:
         st.markdown("**➕ Thêm việc & Ca trực:**")
         with st.form(key=f"pop_form_add_{target_day}"):
-            # 🔥 ĐÃ SỬA: Chọn công việc từ danh mục gốc đã tạo, không cần gõ tay
             if not st.session_state.global_tasks:
                 st.warning("Hãy thêm công việc gốc ở Tab 'Quản lý Nhân Sự & Việc' trước!")
                 chosen_task = None
@@ -161,7 +160,6 @@ def configure_day_modal(target_day):
                 
             s_input = st.text_input("Ca & Khung giờ (Ví dụ: Ca 1 (7h30-11h)):")
             
-            # 🔥 ĐÃ SỬA: Bấm nút thêm chỉ cập nhật State, KHÔNG gọi st.rerun() gây tự đóng popup
             if st.form_submit_button("➕ Thêm vào ngày này") and chosen_task and s_input.strip():
                 s_clean = s_input.strip()
                 if chosen_task not in st.session_state.monthly_structure[target_day]:
@@ -169,7 +167,6 @@ def configure_day_modal(target_day):
                 if s_clean not in st.session_state.monthly_structure[target_day][chosen_task]:
                     st.session_state.monthly_structure[target_day][chosen_task].append(s_clean)
         
-        # Chọn nhân sự xin nghỉ bận ngày này (Tự lưu không đóng popup)
         valid_defaults = [m for m in st.session_state.day_offs[target_day] if m in st.session_state.members]
         st.session_state.day_offs[target_day] = st.multiselect(
             f"❌ Nhân sự nghỉ (BẬN cả ngày):",
@@ -181,7 +178,6 @@ def configure_day_modal(target_day):
         st.caption("Cú pháp nhanh: `Người - Việc - Ca`. Việc nhập vào đây phải nằm trong danh mục việc gốc.")
         quick_input = st.text_input("Nhập câu lệnh ghim nhanh:", placeholder="Ví dụ: Ánh - Trực UAV - Ca 1 (7h30-11h)", key=f"pop_txt_quick_{target_day}")
         
-        # 🔥 ĐÃ SỬA: Xử lý ghim nhanh không tự đóng popup
         if st.button("🚀 Kích hoạt ghim nhanh", key=f"pop_btn_quick_{target_day}"):
             if quick_input:
                 parts = [p.strip() for p in re.split(r'[,;|]|\s+-\s+|\s+–\s+|\s+—\s+', quick_input) if p.strip()]
@@ -205,7 +201,6 @@ def configure_day_modal(target_day):
     st.write("---")
     st.markdown("#### 📊 Sơ đồ ca trực đang thiết lập của ngày:")
     
-    # 🔥 ĐÃ SỬA: Các nút xóa việc/ca/ghim chỉ cập nhật State, tận dụng cơ chế render tự nhiên của Dialog, không tự sập popup
     for task, shifts in list(st.session_state.monthly_structure[target_day].items()):
         with st.container(border=True):
             col_t_title, col_t_del = st.columns([5, 1])
@@ -227,7 +222,6 @@ def configure_day_modal(target_day):
                         st.session_state.monthly_structure[target_day][task].remove(shift)
                         
     st.write("---")
-    # 🔥 NÚT CHỐT: Chỉ khi bấm nút này, hệ thống mới gọi lệnh rerun tổng để đóng popup và tải lại bảng Master Board ở ngoài
     if st.button("💾 XONG & ĐÓNG CỬA SỔ (Cập nhật lên Lịch Tháng)", type="primary", use_container_width=True):
         st.rerun()
 
@@ -325,7 +319,8 @@ with tab_calendar:
     st.caption("👉 **HƯỚNG DẪN:** Bấm nút **'Sửa ngày'** bất kỳ để bật cửa sổ **Popup ghim ca** mà không lo bị sập trang.")
 
     cols_header = st.columns(7)
-    for i, text in enumerate(week_days_text):
+    # 🔥 ĐÃ SỬA LỖI TẠI ĐÂY: Thay week_days_text thành DAYS_OF_WEEK chuẩn xác
+    for i, text in enumerate(DAYS_OF_WEEK):
         cols_header[i].markdown(f'<div class="calendar-header">{text}</div>', unsafe_allow_html=True)
 
     month_matrix = calendar.monthcalendar(select_year, select_month)
@@ -418,7 +413,7 @@ with tab_calendar:
         st.markdown(html_table, unsafe_allow_html=True)
 
 # ------------------------------------------------------
-# 🔥 TAB 2: QUẢN LÝ NHÂN SỰ & DANH MỤC CÔNG VIỆC GỐC
+# TAB 2: QUẢN LÝ NHÂN SỰ & DANH MỤC CÔNG VIỆC GỐC
 # ------------------------------------------------------
 with tab_members:
     c_m1, c_m2 = st.columns(2)
