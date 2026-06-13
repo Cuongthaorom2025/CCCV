@@ -64,7 +64,8 @@ with tab1:
         st.markdown("**Danh sách nhân sự hiện tại:**")
         for name, info in list(st.session_state.members.items()):
             col_m_info, col_m_del = st.columns([3, 1])
-            col_m_info.write(f"👤 **{name}**\n<small>Cấm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']}</small>", unsafe_allowed_html=True)
+            # Đã sửa từ .write thành .markdown để chạy được HTML an toàn
+            col_m_info.markdown(f"👤 **{name}**\n<small>Cấm: {', '.join(info['excluded']) if info['excluded'] else 'Không'} | Max: {info['max']}</small>", unsafe_allowed_html=True)
             
             # Nút xóa thành viên
             if col_m_del.button("❌ Xóa", key=f"del_m_{name}"):
