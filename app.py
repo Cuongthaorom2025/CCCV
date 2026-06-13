@@ -1,8 +1,9 @@
 import streamlit as st
 from datetime import datetime
+import re  # Thêm thư viện cấu trúc chuỗi thông minh
 
 # Cấu hình hiển thị chuẩn di động & máy tính
-st.set_page_config(page_title="Điều Phối Công Việc V5", page_icon="📆", layout="wide")
+st.set_page_config(page_title="Điều Phối Công Việc V5.1", page_icon="📆", layout="wide")
 
 # Danh sách các ngày trong tuần cố định
 DAYS_OF_WEEK = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ Nhật"]
@@ -34,8 +35,8 @@ if "history" not in st.session_state:
 # ==========================================================
 # GIAO DIỆN CHÍNH
 # ==========================================================
-st.title("📆 Hệ Thống Cắt Cử Công Việc Tự Động V5")
-st.markdown(" *Bản quyền nâng cấp: Trợ lý Ghim Tốc Hành bằng dòng chữ — Phù hợp tuyệt đối cho Admin dùng Điện thoại* ")
+st.title("📆 Hệ Thống Cắt Cử Công Việc Tự Động V5.1")
+st.markdown(" *Đã sửa lỗi nhận diện khung giờ — Hỗ trợ ghim tốc hành đa dụng* ")
 
 tab1, tab2, tab3 = st.tabs(["⚙️ Cơ Sở Dữ Liệu Gốc", "📅 Cấu Hình Ca & Ghim Việc", "🚀 Cắt Cử & Lịch Sử"])
 
@@ -125,24 +126,26 @@ with tab2:
             
             st.write("---")
             
-            # 🔥 TÍNH NĂNG NÂNG CẤP MỚI: GHIM TỐC HÀNH BẰNG VĂN BẢN
+            # 🔥 TRỢ LÝ GHIM TỐC HÀNH ĐÃ ĐƯỢC FIX LỖI CHÍNH XÁC
             st.markdown("### ⚡ Trợ lý Ghim Tốc Hành (Nhập nhanh văn bản)")
-            st.caption("Nhập theo cú pháp phân tách bằng dấu gạch ngang `-`: `Tên người - Tên ca - Tên việc` ")
+            st.caption("Cú pháp linh hoạt: `Tên người - Tên ca - Tên việc` hoặc dùng dấu phẩy `Tên người, Tên ca, Tên việc`")
             
-            # Đặt giá trị mẫu chính là ví dụ của bạn để dễ hình dung
             quick_input = st.text_input(
                 "Nhập câu lệnh ghim:", 
-                placeholder="Ví dụ: Ánh - Ca 1 (7h30-11h) - Trực UAV", 
+                placeholder="Ánh - Ca 1 (7h30-11h) - Trực UAV", 
                 key=f"text_input_{day}"
             )
             
             if st.button("🚀 Kích hoạt ghim nhanh", key=f"btn_quick_{day}"):
                 if quick_input:
-                    parts = [p.strip() for p in quick_input.split("-") if p.strip()]
+                    # SỬA ĐỔI: Tách bằng dấu phẩy, chấm phẩy, hoặc dấu gạch ngang PHẢI CÓ khoảng trống hai bên (\s+-\s+)
+                    # Điều này giữ nguyên dấu gạch nối viết liền ở khung giờ như '7h30-11h'
+                    parts = [p.strip() for p in re.split(r'[,;|]|\s+-\s+|\s+–\s+|\s+—\s+', quick_input) if p.strip()]
+                    
                     if len(parts) == 3:
                         p_name, p_shift, p_task = parts[0], parts[1], parts[2]
                         
-                        # Tự động kiểm tra và thêm mới vào DB nếu chưa có người/ca/việc này
+                        # Tự động tạo mới nếu thiếu dữ liệu
                         if p_name not in st.session_state.members:
                             st.session_state.members[p_name] = {"excluded": [], "max": 10, "workload": 0, "history": []}
                             st.toast(f"Hệ thống tự tạo thành viên mới: {p_name}")
@@ -153,22 +156,21 @@ with tab2:
                             st.session_state.tasks.append(p_task)
                             st.toast(f"Hệ thống tự tạo việc mới: {p_task}")
                             
-                        # Thực hiện ghim dữ liệu công việc
+                        # Lưu cấu hình ghim
                         pin_key = f"{day}_{p_shift}_{p_task}"
                         if pin_key not in st.session_state.pins:
                             st.session_state.pins[pin_key] = []
                         if p_name not in st.session_state.pins[pin_key]:
                             st.session_state.pins[pin_key].append(p_name)
                             
-                        st.success(f"🎉 Đã xử lý xong! Ghim thành công **{p_name}** làm **{p_task}** tại **{p_shift}**")
+                        st.success(f"🎉 Ghim thành công **{p_name}** làm **{p_task}** tại **{p_shift}**")
                         st.rerun()
                     else:
-                        st.error("⚠️ Nhập sai cú pháp! Bạn phải điền đủ 3 phần ngăn cách bằng dấu `-`. Ví dụ: Ánh - Ca 1 (7h30-11h) - Trực UAV")
+                        st.error(f"⚠️ Sai cú pháp! Hệ thống đếm được {len(parts)} phần. Hãy đảm bảo có khoảng cách trước và sau dấu gạch ngang. Ví dụ: Ánh - Ca 1 (7h30-11h) - Trực UAV")
 
             st.write("---")
             st.markdown("#### 📌 Trạng thái các ca và ghim hiện tại của ngày:")
             
-            # Hiển thị trực quan danh sách ca trực hiện tại
             if not st.session_state.shifts:
                 st.caption("Chưa có ca làm việc nào.")
             else:
@@ -182,7 +184,6 @@ with tab2:
                             people_str = ", ".join(st.session_state.pins[pin_key])
                             pin_details.append((task, people_str, pin_key))
                     
-                    # Hiển thị tiêu đề ca trực, nếu ca đó có ghim thì sáng màu lên
                     shift_title = f"⏰ {shift} — *(Có {len(pin_details)} việc được ghim trước)*" if has_pin else f"⏰ {shift}"
                     with st.expander(shift_title, expanded=has_pin):
                         if not has_pin:
@@ -213,7 +214,7 @@ with tab3:
 
     if run_v5:
         if not st.session_state.members or not st.session_state.shifts or not st.session_state.tasks:
-            st.error("Thiếu dữ liệu (Nhân sự, ca trực hoặc đầu việc trống) để chạy thuật toán!")
+            st.error("Thiếu dữ liệu để chạy thuật toán!")
         else:
             for name in st.session_state.members:
                 st.session_state.members[name]['workload'] = 0
@@ -229,7 +230,7 @@ with tab3:
                     week_schedule[day][shift] = {task: [] for task in st.session_state.tasks}
                     assigned_in_this_shift = set()
                     
-                    # BƯỚC 1: ĐIỀN CÁC LỆNH GHIM TRƯỚC (Bao gồm dữ liệu ghim nhanh văn bản)
+                    # BƯỚC 1: ĐIỀN CÁC LỆNH GHIM TRƯỚC
                     for task in st.session_state.tasks:
                         pin_key = f"{day}_{shift}_{task}"
                         if pin_key in st.session_state.pins:
@@ -240,7 +241,7 @@ with tab3:
                                     st.session_state.members[member]['history'].append(f"{day}-{shift}: {task} (Ghim)")
                                     assigned_in_this_shift.add(member)
                                     
-                    # BƯỚC 2: TỰ ĐỘNG ĐIỀU PHỐI CÁC PHẦN VIỆC TRỐNG CÒN LẠI
+                    # BƯỚC 2: TỰ ĐỘNG ĐIỀU PHỐI CÁC PHẦN VIỆC TRỐNG
                     for task in st.session_state.tasks:
                         if not week_schedule[day][shift][task]:
                             eligible_members = []
@@ -288,7 +289,8 @@ with tab3:
                             elif pin_key in st.session_state.pins and st.session_state.pins[pin_key]:
                                 st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;🔹 {task} ➔ **{people_text}** *(📌 Ghim trước)*")
                             else:
-                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;🔹 {task} ➔ **{people_text}**")
+                                East_tag = f"&nbsp;&nbsp;&nbsp;&nbsp;🔹 {task} ➔ **{people_text}**"
+                                st.markdown(East_tag)
                         st.write("")
                     
         with st.expander("📊 Biểu đồ thống kê khối lượng công việc tuần này (Tính công bằng)"):
